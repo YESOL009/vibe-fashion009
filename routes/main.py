@@ -36,6 +36,16 @@ LOCAL_IMAGE_MAP = {
     "플로럴 미디 원피스": "/static/images/floral_dress.png",
 }
 
+# 기본 정상가(원가) 매핑 (DB 컬럼에 original_price가 없을 경우 적용)
+DEFAULT_ORIGINAL_PRICES = {
+    "베이직 크롭 티셔츠": 29900,
+    "와이드 데님 팬츠": 49900,
+    "오버핏 코튼 자켓": 89000,
+    "플로럴 미디 원피스": 59900,
+    "청키 스트릿 스니커즈": 89000,
+    "빈티지 워싱 볼캡": 35000,
+}
+
 
 def get_featured_products(limit: int = 4):
     """
@@ -83,10 +93,19 @@ def get_featured_products(limit: int = 4):
                 continue
             seen_names.add(name)
 
-            # 1. 가격 포맷팅 ({:,}원)
+            # 1. 가격 및 원가/할인율 포맷팅
             raw_price = item.get("price") or 0
             price_int = int(raw_price)
             price_formatted = f"{price_int:,}원"
+
+            raw_orig_price = item.get("original_price")
+            if raw_orig_price:
+                orig_price = int(raw_orig_price)
+            else:
+                orig_price = DEFAULT_ORIGINAL_PRICES.get(name) or (int(price_int * 1.3 // 1000 * 1000) if price_int else 0)
+
+            orig_price_formatted = f"{orig_price:,}원" if orig_price else ""
+            discount_rate = int(round((orig_price - price_int) / orig_price * 100)) if (orig_price and orig_price > price_int) else 0
 
             # 2. thumbnail_url 추출 (로컬 매핑 우선 -> product_images 테이블 연동 -> 기본 placeholder)
             thumbnail_url = LOCAL_IMAGE_MAP.get(name) or item.get("thumbnail_url")
@@ -118,6 +137,9 @@ def get_featured_products(limit: int = 4):
                 "category": category_name,
                 "price": price_int,
                 "price_formatted": price_formatted,
+                "original_price": orig_price,
+                "original_price_formatted": orig_price_formatted,
+                "discount_rate": discount_rate,
                 "thumbnail_url": thumbnail_url,
                 "image": thumbnail_url,  # 템플릿 호환성
                 "description": item.get("description") or "",
@@ -177,6 +199,15 @@ def product_detail(product_id):
                 raw_price = item.get("price") or 0
                 price_int = int(raw_price)
 
+                raw_orig_price = item.get("original_price")
+                if raw_orig_price:
+                    orig_price = int(raw_orig_price)
+                else:
+                    orig_price = DEFAULT_ORIGINAL_PRICES.get(prod_name) or (int(price_int * 1.3 // 1000 * 1000) if price_int else 0)
+
+                orig_price_formatted = f"{orig_price:,}원" if orig_price else ""
+                discount_rate = int(round((orig_price - price_int) / orig_price * 100)) if (orig_price and orig_price > price_int) else 0
+
                 category_data = item.get("categories")
                 category_name = category_data.get("name") if isinstance(category_data, dict) else "FASHION"
 
@@ -204,6 +235,9 @@ def product_detail(product_id):
                     "category": category_name,
                     "price": price_int,
                     "price_formatted": f"{price_int:,}원",
+                    "original_price": orig_price,
+                    "original_price_formatted": orig_price_formatted,
+                    "discount_rate": discount_rate,
                     "thumbnail_url": thumbnail_url,
                     "image": thumbnail_url,
                     "description": item.get("description") or "",

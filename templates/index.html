@@ -153,10 +153,20 @@
                             {{ item.description }}
                         </p>
 
-                        <!-- 가격 -->
-                        <div class="d-flex justify-content-between align-items-baseline mb-3">
-                            <span class="fs-5 fw-black text-dark">{{ item.price_formatted }}</span>
-                            <span class="badge bg-light text-secondary border extra-small">무료배송</span>
+                        <!-- 가격 (원가 및 행사 가격) -->
+                        <div class="d-flex justify-content-between align-items-end mb-3">
+                            <div>
+                                {% if item.original_price and item.original_price > item.price %}
+                                <div class="d-flex align-items-center gap-1 mb-1">
+                                    <span class="text-danger fw-bold small">{{ item.discount_rate }}%</span>
+                                    <span class="text-muted text-decoration-line-through extra-small">{{ item.original_price_formatted }}</span>
+                                </div>
+                                {% endif %}
+                                <div class="d-flex align-items-baseline gap-1">
+                                    <span class="fs-5 fw-black text-dark">{{ item.price_formatted }}</span>
+                                </div>
+                            </div>
+                            <span class="badge bg-light text-secondary border extra-small mb-1">무료배송</span>
                         </div>
 
                         <!-- 버튼 그룹: 장바구니 담기 & 구매하기 -->

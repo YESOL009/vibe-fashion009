@@ -53,7 +53,17 @@
             </div>
 
             <div class="border-top border-bottom py-3 my-3">
-                <div class="fs-2 fw-black text-dark mb-1">{{ product.price_formatted }}</div>
+                {% if product.original_price and product.original_price > product.price %}
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="badge bg-danger fw-bold px-2 py-1">{{ product.discount_rate }}% SALE</span>
+                    <span class="text-muted text-decoration-line-through fs-5">{{ product.original_price_formatted }}</span>
+                    <span class="text-muted small">정상가</span>
+                </div>
+                {% endif %}
+                <div class="d-flex align-items-baseline gap-2 mb-1">
+                    <span class="text-danger fw-bold fs-4">행사가</span>
+                    <div class="fs-1 fw-black text-dark">{{ product.price_formatted }}</div>
+                </div>
                 <div class="text-success small fw-medium">
                     <i class="bi bi-truck me-1"></i>무료배송 (CJ대한통운 / 내일 도착 예정)
                 </div>
