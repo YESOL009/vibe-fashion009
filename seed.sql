@@ -214,12 +214,12 @@ BEGIN
         (v_prod_vintage_ballcap, '사이즈', 'FREE', 80, 'ACC-CAP-FREE');
 
 
-    -- [4] 상품별 picsum.photos 썸네일 및 이미지 등록
+    -- [4] 상품별 썸네일 및 이미지 등록
     -- 상품 1: 베이직 크롭 티셔츠
     INSERT INTO public.product_images (product_id, image_url, is_thumbnail, sort_order)
     VALUES
-        (v_prod_crop_t, 'https://picsum.photos/seed/vibe_crop_tee/800/1000', true, 1),
-        (v_prod_crop_t, 'https://picsum.photos/seed/vibe_crop_detail/800/1000', false, 2);
+        (v_prod_crop_t, '/static/images/crop_tee.png', true, 1),
+        (v_prod_crop_t, '/static/images/crop_tee.png', false, 2);
 
     -- 상품 2: 와이드 데님 팬츠
     INSERT INTO public.product_images (product_id, image_url, is_thumbnail, sort_order)

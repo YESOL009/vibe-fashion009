@@ -28,6 +28,11 @@ if SUPABASE_URL and SUPABASE_ANON_KEY:
 # 'main'이라는 이름의 블루프린트를 생성합니다.
 main_bp = Blueprint("main", __name__)
 
+# 특정 상품 정적 이미지 우선 매핑
+LOCAL_IMAGE_MAP = {
+    "베이직 크롭 티셔츠": "/static/images/crop_tee.png",
+}
+
 
 def get_featured_products(limit: int = 4):
     """
@@ -80,8 +85,8 @@ def get_featured_products(limit: int = 4):
             price_int = int(raw_price)
             price_formatted = f"{price_int:,}원"
 
-            # 2. thumbnail_url 추출 (product_images 테이블 연동 또는 기본 placeholder)
-            thumbnail_url = item.get("thumbnail_url")
+            # 2. thumbnail_url 추출 (로컬 매핑 우선 -> product_images 테이블 연동 -> 기본 placeholder)
+            thumbnail_url = LOCAL_IMAGE_MAP.get(name) or item.get("thumbnail_url")
             if not thumbnail_url:
                 images = item.get("product_images") or []
                 # is_thumbnail=True인 이미지를 우선 탐색
@@ -158,8 +163,9 @@ def product_detail(product_id):
             )
             item = res.data
             if item:
+                prod_name = item.get("name")
                 images = item.get("product_images") or []
-                thumbnail_url = item.get("thumbnail_url")
+                thumbnail_url = LOCAL_IMAGE_MAP.get(prod_name) or item.get("thumbnail_url")
                 if not thumbnail_url and images:
                     thumbnail_url = images[0].get("image_url")
                 if not thumbnail_url:
@@ -173,7 +179,7 @@ def product_detail(product_id):
 
                 product = {
                     "id": item.get("id"),
-                    "name": item.get("name"),
+                    "name": prod_name,
                     "category": category_name,
                     "price": price_int,
                     "price_formatted": f"{price_int:,}원",
