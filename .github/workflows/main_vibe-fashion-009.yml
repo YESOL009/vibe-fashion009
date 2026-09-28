@@ -50,22 +50,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
 
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: python-app
-      
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_FD76A234AD10487B996FFAD4F89BC7D8 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_B7E8CDD7A01E4E429AFB883654B0A322 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_E60DA32679BC4513A71088FD3B246767 }}
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
@@ -73,4 +63,5 @@ jobs:
         with:
           app-name: 'vibe-fashion-009'
           slot-name: 'Production'
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
           

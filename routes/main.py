@@ -126,7 +126,7 @@ def index():
     쇼핑몰 메인 페이지 라우트
     - Supabase products 테이블의 추천 상품 목록을 템플릿에 전달하여 렌더링합니다.
     """
-    products = get_featured_products(limit=4)
+    products = get_featured_products(limit=12)
 
     return render_template(
         "index.html",

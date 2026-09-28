@@ -207,11 +207,23 @@ function filterCategory(category, btnElement) {
     btnElement.classList.remove('btn-outline-dark');
     btnElement.classList.add('btn-dark', 'active');
 
+    // 카테고리 매핑 테이블 (영문 필터 키 -> 한글 카테고리명 매칭)
+    const categoryMapping = {
+        'ALL': ['ALL'],
+        'TOP': ['상의', 'TOP'],
+        'BOTTOM': ['하의', 'BOTTOM'],
+        'OUTER': ['아우터', 'OUTER'],
+        'SHOES': ['신발', 'SHOES'],
+        'ACC': ['액세서리', 'ACC', '모자']
+    };
+
+    const targetList = categoryMapping[category] || [category];
+
     // 상품 카드 필터링
     const items = document.querySelectorAll('.product-item');
     items.forEach(item => {
-        const itemCategory = item.getAttribute('data-category');
-        if (category === 'ALL' || itemCategory === category) {
+        const itemCategory = (item.getAttribute('data-category') || '').trim();
+        if (category === 'ALL' || targetList.includes(itemCategory)) {
             item.style.display = 'block';
         } else {
             item.style.display = 'none';
