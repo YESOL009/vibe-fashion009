@@ -32,6 +32,7 @@ main_bp = Blueprint("main", __name__)
 LOCAL_IMAGE_MAP = {
     "베이직 크롭 티셔츠": "/static/images/crop_tee.png",
     "와이드 데님 팬츠": "/static/images/denim_pants.png",
+    "오버핏 코튼 자켓": "/static/images/cotton_jacket.png",
 }
 
 

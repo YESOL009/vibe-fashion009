@@ -230,8 +230,8 @@ BEGIN
     -- 상품 3: 오버핏 코튼 자켓
     INSERT INTO public.product_images (product_id, image_url, is_thumbnail, sort_order)
     VALUES
-        (v_prod_cotton_jacket, 'https://picsum.photos/seed/vibe_cotton_jacket/800/1000', true, 1),
-        (v_prod_cotton_jacket, 'https://picsum.photos/seed/vibe_jacket_detail/800/1000', false, 2);
+        (v_prod_cotton_jacket, '/static/images/cotton_jacket.png', true, 1),
+        (v_prod_cotton_jacket, '/static/images/cotton_jacket.png', false, 2);
 
     -- 상품 4: 플로럴 미디 원피스
     INSERT INTO public.product_images (product_id, image_url, is_thumbnail, sort_order)
