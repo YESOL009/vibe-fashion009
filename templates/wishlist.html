@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}관심 상품 | {{ brand_name }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}" class="text-dark text-decoration-none">HOME</a></li>
+            <li class="breadcrumb-item active" aria-current="page">관심 상품</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+        <h2 class="fw-black mb-0">
+            <i class="bi bi-heart-fill me-2 text-danger"></i>관심 상품 (위시리스트)
+            <span class="fs-6 text-muted fw-normal">({{ wishlist_count }}개)</span>
+        </h2>
+        <a href="{{ url_for('main.index') }}#products-section" class="btn btn-outline-dark btn-sm fw-semibold">
+            <i class="bi bi-arrow-left me-1"></i>쇼핑 계속하기
+        </a>
+    </div>
+
+    {% if items %}
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4" id="wishlist-grid">
+        {% for item in items %}
+        <div class="col" id="wishlist-col-{{ item.id }}">
+            <div class="card h-100 border-0 shadow-sm rounded-3 overflow-hidden position-relative product-card">
+                <!-- 관심상품 제거 버튼 -->
+                <button class="btn btn-danger btn-sm rounded-circle position-absolute top-0 end-0 m-3 shadow-sm"
+                        onclick="toggleWishlistAction('{{ item.id }}', '{{ item.name }}', '{{ item.price }}', '{{ item.thumbnail_url }}')"
+                        title="관심 상품 해제">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+
+                <!-- 이미지 -->
+                <div class="product-img-wrapper overflow-hidden bg-light">
+                    <img src="{{ item.thumbnail_url }}" class="card-img-top product-img" alt="{{ item.name }}">
+                </div>
+
+                <!-- 내용 -->
+                <div class="card-body d-flex flex-column p-3">
+                    <h5 class="card-title fw-bold fs-6 mb-1 text-truncate">
+                        <a href="{{ url_for('main.product_detail', product_id=item.id) if item.id else '#' }}" class="text-decoration-none text-dark hover-warning">
+                            {{ item.name }}
+                        </a>
+                    </h5>
+                    <div class="fs-5 fw-black text-dark mb-3">{{ item.price_formatted }}</div>
+
+                    <div class="d-grid gap-2 mt-auto">
+                        <button class="btn btn-outline-dark btn-sm fw-semibold"
+                                onclick="addCartAndRefresh('{{ item.id }}', '{{ item.name }}', '{{ item.price }}', '{{ item.thumbnail_url }}')">
+                            <i class="bi bi-bag-plus me-1"></i>장바구니 담기
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <!-- 관심 상품 빈 상태 -->
+    <div class="card border-0 shadow-sm rounded-4 p-5 text-center my-4">
+        <div class="py-5">
+            <div class="bg-light d-inline-flex p-4 rounded-circle mb-3">
+                <i class="bi bi-heart text-muted" style="font-size: 3rem;"></i>
+            </div>
+            <h4 class="fw-bold mb-2">관심 상품 목록이 비어 있습니다</h4>
+            <p class="text-muted mb-4">마음에 드는 상품의 하트(❤️) 버튼을 눌러 위시리스트에 담아보세요!</p>
+            <a href="{{ url_for('main.index') }}#products-section" class="btn btn-dark btn-lg px-4 fw-bold">
+                인기 상품 둘러보기
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

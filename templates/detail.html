@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}{{ product.name if product else '상품을 찾을 수 없습니다' }} | {{ brand_name }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}" class="text-dark text-decoration-none">HOME</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}#products-section" class="text-dark text-decoration-none">{{ product.category if product else 'SHOP' }}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ product.name if product else '상세정보' }}</li>
+        </ol>
+    </nav>
+
+    {% if product %}
+    <div class="row g-5">
+        <!-- 상품 이미지 -->
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <img src="{{ product.image }}" class="img-fluid w-100" alt="{{ product.name }}">
+            </div>
+        </div>
+
+        <!-- 상품 구매 정보 -->
+        <div class="col-lg-6 d-flex flex-column justify-content-center">
+            <div class="mb-2">
+                <span class="badge {{ product.badge_class }} me-2">{{ product.badge }}</span>
+                <span class="text-muted fw-semibold">{{ product.category }}</span>
+            </div>
+
+            <h1 class="fw-bold mb-3">{{ product.name }}</h1>
+
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <div class="text-warning">
+                    <i class="bi bi-star-fill"></i>
+                    <i class="bi bi-star-fill"></i>
+                    <i class="bi bi-star-fill"></i>
+                    <i class="bi bi-star-fill"></i>
+                    <i class="bi bi-star-half"></i>
+                </div>
+                <span class="fw-bold">{{ product.rating }}</span>
+                <span class="text-muted small">(리뷰 128개)</span>
+            </div>
+
+            <div class="border-top border-bottom py-3 my-3">
+                <div class="fs-2 fw-black text-dark mb-1">{{ product.price_formatted }}</div>
+                <div class="text-success small fw-medium">
+                    <i class="bi bi-truck me-1"></i>무료배송 (CJ대한통운 / 내일 도착 예정)
+                </div>
+            </div>
+
+            <p class="text-secondary leading-relaxed mb-4">
+                {{ product.description }}
+            </p>
+
+            <!-- 옵션 선택 예시 -->
+            <div class="mb-3">
+                <label class="form-label fw-bold small">사이즈 선택</label>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-dark btn-sm px-3 active">M (95~100)</button>
+                    <button class="btn btn-outline-dark btn-sm px-3">L (100~105)</button>
+                    <button class="btn btn-outline-dark btn-sm px-3">XL (105~110)</button>
+                </div>
+            </div>
+
+            <!-- 구매 / 장바구니 버튼 -->
+            <div class="d-flex gap-3 mt-3">
+                <button class="btn btn-outline-dark btn-lg flex-grow-1 fw-bold" onclick="addToCartAction('{{ product.id }}', '{{ product.name }}', '{{ product.price }}', '{{ product.thumbnail_url }}')">
+                    <i class="bi bi-bag-plus me-2"></i>장바구니 담기
+                </button>
+                <a href="{{ url_for('main.cart_page') }}" class="btn btn-warning btn-lg flex-grow-1 fw-bold text-dark d-flex align-items-center justify-content-center">
+                    장바구니 확인하기
+                </a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <h3 class="fw-bold">상품을 찾을 수 없습니다.</h3>
+        <p class="text-muted">요청하신 상품 번호가 유효하지 않습니다.</p>
+        <a href="{{ url_for('main.index') }}" class="btn btn-dark">메인으로 돌아가기</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}장바구니 | {{ brand_name }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}" class="text-dark text-decoration-none">HOME</a></li>
+            <li class="breadcrumb-item active" aria-current="page">장바구니</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+        <h2 class="fw-black mb-0">
+            <i class="bi bi-bag-fill me-2 text-warning"></i>장바구니
+            <span class="fs-6 text-muted fw-normal">({{ cart_count }}개 상품)</span>
+        </h2>
+        {% if items %}
+        <button class="btn btn-outline-danger btn-sm" onclick="clearCart()">
+            <i class="bi bi-trash me-1"></i>전체 비우기
+        </button>
+        {% endif %}
+    </div>
+
+    {% if items %}
+    <div class="row g-4">
+        <!-- 장바구니 상품 목록 -->
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col" class="py-3 ps-4">상품 정보</th>
+                                <th scope="col" class="py-3 text-center" style="width: 140px;">수량</th>
+                                <th scope="col" class="py-3 text-end" style="width: 120px;">주문금액</th>
+                                <th scope="col" class="py-3 text-center pe-4" style="width: 80px;">삭제</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr id="cart-row-{{ item.id }}">
+                                <td class="ps-4 py-3">
+                                    <div class="d-flex align-items-center gap-3">
+                                        <img src="{{ item.thumbnail_url }}" alt="{{ item.name }}" class="rounded-3 shadow-sm object-fit-cover" style="width: 70px; height: 85px;">
+                                        <div>
+                                            <h6 class="fw-bold mb-1">
+                                                <a href="{{ url_for('main.product_detail', product_id=item.id) if item.id else '#' }}" class="text-dark text-decoration-none hover-warning">
+                                                    {{ item.name }}
+                                                </a>
+                                            </h6>
+                                            <div class="text-muted small mb-1">옵션: {{ item.option }}</div>
+                                            <div class="fw-semibold text-secondary small">{{ item.price_formatted }}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="text-center py-3">
+                                    <div class="input-group input-group-sm justify-content-center" style="max-width: 110px; margin: 0 auto;">
+                                        <button class="btn btn-outline-secondary" type="button" onclick="updateCartQuantity('{{ item.id }}', 'decrease')">-</button>
+                                        <span class="input-group-text bg-white px-3 fw-bold">{{ item.quantity }}</span>
+                                        <button class="btn btn-outline-secondary" type="button" onclick="updateCartQuantity('{{ item.id }}', 'increase')">+</button>
+                                    </div>
+                                </td>
+                                <td class="text-end py-3 fw-black fs-6">
+                                    {{ item.subtotal_formatted }}
+                                </td>
+                                <td class="text-center py-3 pe-4">
+                                    <button class="btn btn-link text-danger p-0" onclick="removeFromCart('{{ item.id }}')" title="삭제">
+                                        <i class="bi bi-trash fs-5"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('main.index') }}#products-section" class="btn btn-outline-dark fw-semibold">
+                    <i class="bi bi-arrow-left me-1"></i>계속 쇼핑하기
+                </a>
+            </div>
+        </div>
+
+        <!-- 결제 금액 요약 카드 -->
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm rounded-4 p-4 sticky-top" style="top: 100px;">
+                <h5 class="fw-bold mb-3 border-bottom pb-3">주문 요약</h5>
+                
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">총 상품금액</span>
+                    <span class="fw-bold">{{ total_price_formatted }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">배송비</span>
+                    <span class="fw-semibold {{ 'text-success' if shipping_fee == 0 else '' }}">
+                        {{ shipping_fee_formatted }}
+                    </span>
+                </div>
+                {% if shipping_fee > 0 %}
+                <div class="alert alert-warning py-2 px-3 small rounded-3 mb-3">
+                    <i class="bi bi-info-circle me-1"></i>30,000원 이상 구매 시 <strong>무료배송</strong> 혜택!
+                </div>
+                {% endif %}
+
+                <hr class="my-3">
+
+                <div class="d-flex justify-content-between align-items-baseline mb-4">
+                    <span class="fs-5 fw-bold">최종 결제예정금액</span>
+                    <span class="fs-3 fw-black text-danger">{{ final_total_formatted }}</span>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button class="btn btn-warning btn-lg fw-bold text-dark shadow-sm py-3" onclick="showToast('결제 모듈 연동 준비 중입니다.')">
+                        주문 결제하기 ({{ cart_count }}개)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- 장바구니 빈 상태 -->
+    <div class="card border-0 shadow-sm rounded-4 p-5 text-center my-4">
+        <div class="py-5">
+            <div class="bg-light d-inline-flex p-4 rounded-circle mb-3">
+                <i class="bi bi-bag-x text-muted" style="font-size: 3rem;"></i>
+            </div>
+            <h4 class="fw-bold mb-2">장바구니가 비어 있습니다</h4>
+            <p class="text-muted mb-4">VIBE-FASHION의 트렌디한 신상품들을 둘러보세요!</p>
+            <a href="{{ url_for('main.index') }}#products-section" class="btn btn-dark btn-lg px-4 fw-bold">
+                인기 상품 보러가기
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

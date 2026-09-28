@@ -1,0 +1,24 @@
+# Python 가상환경 및 캐시 파일
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# 환경 변수 파일 (보안상 깃에 올리지 않음)
+.env
+
+# 배포 및 빌드 산출물
+dist/
+build/
+*.egg-info/
+
+# IDE 및 OS 설정 파일
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+*.pyc
+*.log
