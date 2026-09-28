@@ -339,6 +339,145 @@ def wishlist_page():
     )
 
 
+# -----------------------------------------------------------------------------
+# 주문 및 결제 (Checkout) 라우트
+# -----------------------------------------------------------------------------
+
+def _get_available_coupons():
+    """사용자가 사용 가능한 쿠폰 목록 반환"""
+    # 신규 가입 15% 웰컴 쿠폰 및 무료 배송 쿠폰 등
+    return [
+        {
+            "code": "WELCOME15",
+            "name": "신규회원 가입 15% 웰컴 쿠폰",
+            "discount_rate": 15,
+            "badge": "15% 할인",
+            "description": "전 상품 결제 시 15% 즉시 할인",
+            "min_amount": 0
+        },
+        {
+            "code": "VIBE10",
+            "name": "2026 S/S 시즌 오프닝 10% 쿠폰",
+            "discount_rate": 10,
+            "badge": "10% 할인",
+            "description": "봄/여름 컬렉션 10% 추가 할인",
+            "min_amount": 0
+        }
+    ]
+
+
+@main_bp.route("/checkout", methods=["GET"])
+def checkout_page():
+    """
+    주문/결제 화면
+    """
+    cart = _get_cart()
+    if not cart:
+        flash("장바구니가 비어 있습니다. 상품을 먼저 담아주세요.", "info")
+        return redirect(url_for("main.cart_page"))
+
+    items = []
+    total_price = 0
+
+    for pid, info in cart.items():
+        qty = int(info.get("quantity", 1))
+        price = int(info.get("price", 0))
+        item_total = price * qty
+        total_price += item_total
+
+        items.append({
+            "id": pid,
+            "name": info.get("name"),
+            "price": price,
+            "price_formatted": f"{price:,}원",
+            "quantity": qty,
+            "subtotal": item_total,
+            "subtotal_formatted": f"{item_total:,}원",
+            "thumbnail_url": info.get("thumbnail_url"),
+            "option": info.get("option", "기본 옵션")
+        })
+
+    shipping_fee = 0 if (total_price >= 30000 or total_price == 0) else 3000
+    final_total = total_price + shipping_fee
+
+    coupons = _get_available_coupons()
+
+    return render_template(
+        "checkout.html",
+        brand_name="VIBE-FASHION",
+        items=items,
+        total_price=total_price,
+        total_price_formatted=f"{total_price:,}원",
+        shipping_fee=shipping_fee,
+        shipping_fee_formatted=f"{shipping_fee:,}원" if shipping_fee > 0 else "무료배송",
+        final_total=final_total,
+        final_total_formatted=f"{final_total:,}원",
+        available_coupons=coupons,
+        user=session.get("user")
+    )
+
+
+@main_bp.route("/checkout/process", methods=["POST"])
+def checkout_process():
+    """
+    결제 처리 및 주문 완료
+    """
+    cart = _get_cart()
+    if not cart:
+        flash("주문할 상품이 없습니다.", "error")
+        return redirect(url_for("main.index"))
+
+    import time
+    buyer_name = request.form.get("buyer_name") or "구매자"
+    buyer_phone = request.form.get("buyer_phone") or ""
+    address = request.form.get("address") or ""
+    address_detail = request.form.get("address_detail") or ""
+    payment_method = request.form.get("payment_method") or "신용/체크카드"
+    coupon_code = request.form.get("coupon_code") or ""
+
+    try:
+        total_price = int(request.form.get("total_price") or 0)
+        discount_amount = int(request.form.get("discount_amount") or 0)
+        shipping_fee = int(request.form.get("shipping_fee") or 0)
+        final_amount = int(request.form.get("final_amount") or 0)
+    except ValueError:
+        total_price = sum(int(item.get("price", 0)) * int(item.get("quantity", 1)) for item in cart.values())
+        shipping_fee = 0 if total_price >= 30000 else 3000
+        discount_amount = 0
+        final_amount = total_price + shipping_fee
+
+    # 고유 주문번호 생성 (예: ORD-20260928-123456)
+    order_id = f"ORD-{time.strftime('%Y%m%d')}-{int(time.time() * 1000) % 1000000:06d}"
+    order_time = time.strftime('%Y-%m-%d %H:%M:%S')
+
+    order_info = {
+        "order_id": order_id,
+        "created_at": order_time,
+        "buyer_name": buyer_name,
+        "buyer_phone": buyer_phone,
+        "address": address,
+        "address_detail": address_detail,
+        "payment_method": payment_method,
+        "coupon_code": coupon_code,
+        "total_price": total_price,
+        "discount_amount": discount_amount,
+        "shipping_fee": shipping_fee,
+        "final_amount": final_amount,
+        "item_count": sum(int(item.get("quantity", 1)) for item in cart.values())
+    }
+
+    # 주문 완료 후 장바구니 비우기
+    session["cart"] = {}
+    session["last_order"] = order_info
+    session.modified = True
+
+    return render_template(
+        "checkout_success.html",
+        brand_name="VIBE-FASHION",
+        order=order_info
+    )
+
+
 @main_bp.route("/api/cart/add", methods=["POST"])
 def api_cart_add():
     """

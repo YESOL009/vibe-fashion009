@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block title %}주문/결제 | {{ brand_name }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}" class="text-dark text-decoration-none">HOME</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('main.cart_page') }}" class="text-dark text-decoration-none">장바구니</a></li>
+            <li class="breadcrumb-item active" aria-current="page">주문/결제</li>
+        </ol>
+    </nav>
+
+    <h2 class="fw-black mb-4">
+        <i class="bi bi-credit-card me-2 text-warning"></i>주문 / 결제
+    </h2>
+
+    <form method="POST" action="{{ url_for('main.checkout_process') }}" id="checkout-form">
+        <div class="row g-4">
+            <!-- 좌측: 배송지 정보 & 결제 수단 & 주문 상품 -->
+            <div class="col-lg-8">
+                <!-- 1. 배송지 정보 카드 -->
+                <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+                    <h5 class="fw-bold mb-3 d-flex align-items-center">
+                        <i class="bi bi-geo-alt-fill text-danger me-2"></i>배송지 정보
+                    </h5>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">수령인 이름</label>
+                            <input type="text" class="form-control" name="buyer_name" value="{{ user.name if user else '' }}" placeholder="홍길동" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">휴대폰 번호</label>
+                            <input type="tel" class="form-control" name="buyer_phone" placeholder="010-1234-5678" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small fw-semibold">배송 주소</label>
+                            <input type="text" class="form-control mb-2" name="address" placeholder="기본 주소 (예: 서울시 강남구 테헤란로 123)" required>
+                            <input type="text" class="form-control" name="address_detail" placeholder="상세 주소 (동, 호수 등)">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small fw-semibold">배송 요청사항</label>
+                            <select class="form-select" name="shipping_message">
+                                <option value="부재 시 문 앞에 놓아주세요.">부재 시 문 앞에 놓아주세요.</option>
+                                <option value="배송 전 미리 연락 바랍니다.">배송 전 미리 연락 바랍니다.</option>
+                                <option value="경비실에 맡겨 주세요.">경비실에 맡겨 주세요.</option>
+                                <option value="직접 수령하겠습니다.">직접 수령하겠습니다.</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. 쿠폰 및 할인 혜택 카드 -->
+                <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white border-start border-warning border-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0 d-flex align-items-center">
+                            <i class="bi bi-ticket-perforated-fill text-warning me-2"></i>할인 쿠폰 적용
+                        </h5>
+                        <span class="badge bg-warning text-dark fw-bold">사용 가능 {{ available_coupons|length }}장</span>
+                    </div>
+                    
+                    <p class="text-muted small mb-3">
+                        보유하신 할인 쿠폰을 선택하시면 결제 금액에 즉시 할인 혜택이 적용됩니다.
+                    </p>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">쿠폰 선택</label>
+                        <select class="form-select py-2" id="coupon-select" name="coupon_code" onchange="applyCoupon(this.value)">
+                            <option value="" data-discount-rate="0" data-discount-amount="0">쿠폰을 선택하지 않음</option>
+                            {% for c in available_coupons %}
+                            <option value="{{ c.code }}" 
+                                    data-discount-rate="{{ c.discount_rate }}" 
+                                    data-min-amount="{{ c.min_amount }}"
+                                    {% if loop.first %}selected{% endif %}>
+                                [{{ c.badge }}] {{ c.name }} ({{ c.description }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="alert alert-light border d-flex align-items-center justify-content-between py-2 px-3 mb-0" id="coupon-applied-notice">
+                        <span class="small text-muted"><i class="bi bi-check-circle-fill text-success me-1"></i>쿠폰 할인액:</span>
+                        <span class="fw-bold text-danger fs-6" id="coupon-discount-text">-0원</span>
+                    </div>
+                </div>
+
+                <!-- 3. 결제 수단 선택 -->
+                <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+                    <h5 class="fw-bold mb-3 d-flex align-items-center">
+                        <i class="bi bi-wallet2 text-primary me-2"></i>결제 수단 선택
+                    </h5>
+                    <div class="row g-2">
+                        <div class="col-6 col-md-3">
+                            <input type="radio" class="btn-check" name="payment_method" id="pay_card" value="신용/체크카드" checked>
+                            <label class="btn btn-outline-dark w-100 py-3 text-center fw-semibold d-flex flex-column align-items-center gap-1" for="pay_card">
+                                <i class="bi bi-credit-card fs-4"></i>
+                                <span class="small">신용카드</span>
+                            </label>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <input type="radio" class="btn-check" name="payment_method" id="pay_kakao" value="카카오페이">
+                            <label class="btn btn-outline-dark w-100 py-3 text-center fw-semibold d-flex flex-column align-items-center gap-1" for="pay_kakao">
+                                <i class="bi bi-chat-fill text-warning fs-4"></i>
+                                <span class="small">카카오페이</span>
+                            </label>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <input type="radio" class="btn-check" name="payment_method" id="pay_naver" value="네이버페이">
+                            <label class="btn btn-outline-dark w-100 py-3 text-center fw-semibold d-flex flex-column align-items-center gap-1" for="pay_naver">
+                                <i class="bi bi-n-square-fill text-success fs-4"></i>
+                                <span class="small">네이버페이</span>
+                            </label>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <input type="radio" class="btn-check" name="payment_method" id="pay_toss" value="토스페이">
+                            <label class="btn btn-outline-dark w-100 py-3 text-center fw-semibold d-flex flex-column align-items-center gap-1" for="pay_toss">
+                                <i class="bi bi-send-fill text-primary fs-4"></i>
+                                <span class="small">토스페이</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. 주문 상품 목록 미리보기 -->
+                <div class="card border-0 shadow-sm rounded-4 p-4">
+                    <h5 class="fw-bold mb-3 d-flex align-items-center">
+                        <i class="bi bi-box-seam me-2 text-secondary"></i>주문 상품 ({{ items|length }}개)
+                    </h5>
+                    <div class="list-group list-group-flush">
+                        {% for item in items %}
+                        <div class="list-group-item px-0 py-3 d-flex align-items-center justify-content-between">
+                            <div class="d-flex align-items-center gap-3">
+                                <img src="{{ item.thumbnail_url }}" alt="{{ item.name }}" class="rounded-3 shadow-sm object-fit-cover" style="width: 60px; height: 75px;">
+                                <div>
+                                    <h6 class="fw-bold mb-1">{{ item.name }}</h6>
+                                    <div class="text-muted extra-small">옵션: {{ item.option }} | 수량: {{ item.quantity }}개</div>
+                                    <div class="fw-semibold text-secondary small">{{ item.price_formatted }}</div>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <span class="fw-bold text-dark">{{ item.subtotal_formatted }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- 우측: 최종 결제 요약 카드 (Sticky) -->
+            <div class="col-lg-4">
+                <div class="card border-0 shadow-sm rounded-4 p-4 sticky-top" style="top: 100px;">
+                    <h5 class="fw-bold mb-3 border-bottom pb-3">결제 금액 요약</h5>
+
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">총 상품금액</span>
+                        <span class="fw-bold" id="summary-total-price">{{ total_price_formatted }}</span>
+                    </div>
+
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">쿠폰 할인금액</span>
+                        <span class="fw-bold text-danger" id="summary-discount-price">-0원</span>
+                    </div>
+
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">배송비</span>
+                        <span class="fw-semibold {{ 'text-success' if shipping_fee == 0 else '' }}" id="summary-shipping-fee">
+                            {{ shipping_fee_formatted }}
+                        </span>
+                    </div>
+                    {% if total_price < 30000 %}
+                    <div class="alert alert-warning py-2 px-3 extra-small rounded-3 mb-3">
+                        <i class="bi bi-info-circle me-1"></i>30,000원 이상 구매 시 <strong>무료배송</strong>!
+                    </div>
+                    {% endif %}
+
+                    <hr class="my-3">
+
+                    <div class="d-flex justify-content-between align-items-baseline mb-4">
+                        <span class="fs-5 fw-bold">최종 결제금액</span>
+                        <span class="fs-2 fw-black text-danger" id="summary-final-total">{{ final_total_formatted }}</span>
+                    </div>
+
+                    <!-- 동적 계산용 hidden fields -->
+                    <input type="hidden" name="total_price" value="{{ total_price }}">
+                    <input type="hidden" name="discount_amount" id="form-discount-amount" value="0">
+                    <input type="hidden" name="shipping_fee" id="form-shipping-fee" value="{{ shipping_fee }}">
+                    <input type="hidden" name="final_amount" id="form-final-amount" value="{{ final_total }}">
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="order-agree" required checked>
+                        <label class="form-check-label text-muted extra-small" for="order-agree">
+                            주문 상품 정보 및 결제 대행 서비스 이용약관에 동의합니다.
+                        </label>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-warning btn-lg fw-bold text-dark shadow-sm py-3 d-flex align-items-center justify-content-center gap-2">
+                            <i class="bi bi-shield-lock-fill"></i>
+                            <span id="pay-button-text">{{ final_total_formatted }} 결제하기</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- 프론트엔드 쿠폰 즉시 계산 스크립트 -->
+<script>
+    const BASE_TOTAL_PRICE = {{ total_price }};
+    const BASE_SHIPPING_FEE = {{ shipping_fee }};
+
+    function applyCoupon(couponCode) {
+        const select = document.getElementById('coupon-select');
+        const selectedOption = select.options[select.selectedIndex];
+        const rate = parseFloat(selectedOption.getAttribute('data-discount-rate') || 0);
+
+        let discount = 0;
+        if (rate > 0) {
+            discount = Math.floor((BASE_TOTAL_PRICE * (rate / 100)) / 10) * 10;
+        }
+
+        const finalTotal = Math.max(0, BASE_TOTAL_PRICE - discount) + BASE_SHIPPING_FEE;
+
+        // UI 갱신
+        document.getElementById('coupon-discount-text').innerText = '-' + discount.toLocaleString() + '원';
+        document.getElementById('summary-discount-price').innerText = '-' + discount.toLocaleString() + '원';
+        document.getElementById('summary-final-total').innerText = finalTotal.toLocaleString() + '원';
+        document.getElementById('pay-button-text').innerText = finalTotal.toLocaleString() + '원 결제하기';
+
+        // 폼 필드 갱신
+        document.getElementById('form-discount-amount').value = discount;
+        document.getElementById('form-final-amount').value = finalTotal;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        applyCoupon(document.getElementById('coupon-select').value);
+    });
+</script>
+{% endblock %}
