@@ -67,8 +67,14 @@ def get_featured_products(limit: int = 4):
             else:
                 raise filter_err
 
+        seen_names = set()
         formatted_products = []
         for item in data:
+            name = item.get("name")
+            if name in seen_names:
+                continue
+            seen_names.add(name)
+
             # 1. 가격 포맷팅 ({:,}원)
             raw_price = item.get("price") or 0
             price_int = int(raw_price)
