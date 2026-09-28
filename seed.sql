@@ -224,8 +224,8 @@ BEGIN
     -- 상품 2: 와이드 데님 팬츠
     INSERT INTO public.product_images (product_id, image_url, is_thumbnail, sort_order)
     VALUES
-        (v_prod_denim_pants, 'https://picsum.photos/seed/vibe_denim_pants/800/1000', true, 1),
-        (v_prod_denim_pants, 'https://picsum.photos/seed/vibe_denim_detail/800/1000', false, 2);
+        (v_prod_denim_pants, '/static/images/denim_pants.png', true, 1),
+        (v_prod_denim_pants, '/static/images/denim_pants.png', false, 2);
 
     -- 상품 3: 오버핏 코튼 자켓
     INSERT INTO public.product_images (product_id, image_url, is_thumbnail, sort_order)

@@ -31,6 +31,7 @@ main_bp = Blueprint("main", __name__)
 # 특정 상품 정적 이미지 우선 매핑
 LOCAL_IMAGE_MAP = {
     "베이직 크롭 티셔츠": "/static/images/crop_tee.png",
+    "와이드 데님 팬츠": "/static/images/denim_pants.png",
 }
 
 
