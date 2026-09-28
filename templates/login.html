@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}로그인 | {{ brand_name }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white">
+                <div class="text-center mb-4">
+                    <span class="badge bg-warning text-dark px-3 py-2 rounded-pill fw-bold text-uppercase mb-2">VIBE-FASHION MEMBERS</span>
+                    <h2 class="fw-black mb-1">로그인</h2>
+                    <p class="text-muted small">VIBE-FASHION의 특별한 회원 혜택을 누려보세요.</p>
+                </div>
+
+                <!-- 플래시 메시지 (에러/안내) -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} py-2 px-3 small rounded-3 mb-3" role="alert">
+                            <i class="bi bi-exclamation-circle me-1"></i>{{ message }}
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <form method="POST" action="{{ url_for('main.login_page') }}">
+                    <div class="mb-3">
+                        <label for="email" class="form-label fw-semibold small">이메일 계정</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-envelope"></i></span>
+                            <input type="email" class="form-control border-start-0 ps-0" id="email" name="email" placeholder="example@vibe-fashion.com" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label for="password" class="form-label fw-semibold small mb-0">비밀번호</label>
+                            <a href="#" class="text-muted extra-small text-decoration-none hover-warning" onclick="showToast('비밀번호 찾기 기능은 준비 중입니다.')">비밀번호 찾기</a>
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-lock"></i></span>
+                            <input type="password" class="form-control border-start-0 ps-0" id="password" name="password" placeholder="6자리 이상 비밀번호 입력" required>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-dark btn-lg fw-bold py-3 shadow-sm">
+                            로그인
+                        </button>
+                    </div>
+                </form>
+
+                <div class="text-center mt-4 pt-3 border-top">
+                    <p class="text-muted small mb-0">
+                        아직 계정이 없으신가요? 
+                        <a href="{{ url_for('main.register_page') }}" class="text-dark fw-bold text-decoration-none hover-warning ms-1">
+                            회원가입하기 <i class="bi bi-arrow-right"></i>
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -166,7 +166,11 @@
                                     <span class="fs-5 fw-black text-dark">{{ item.price_formatted }}</span>
                                 </div>
                             </div>
-                            <span class="badge bg-light text-secondary border extra-small mb-1">무료배송</span>
+                            {% if item.price < 30000 %}
+                            <span class="badge bg-light text-secondary border extra-small mb-1">배송비 3,000원</span>
+                            {% else %}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle extra-small mb-1">무료배송</span>
+                            {% endif %}
                         </div>
 
                         <!-- 버튼 그룹: 장바구니 담기 & 구매하기 -->
