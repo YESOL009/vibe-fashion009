@@ -159,7 +159,7 @@ def product_detail(product_id):
         try:
             res = (
                 supabase.table("products")
-                .select("*, categories(name, slug), product_images(*)")
+                .select("*, categories(name, slug), product_images(*), product_options(*)")
                 .eq("id", product_id)
                 .single()
                 .execute()
@@ -180,6 +180,24 @@ def product_detail(product_id):
                 category_data = item.get("categories")
                 category_name = category_data.get("name") if isinstance(category_data, dict) else "FASHION"
 
+                # 옵션 파싱 (DB 등록 옵션 우선, 없을 경우 기본 사이즈 세팅)
+                raw_options = item.get("product_options") or []
+                parsed_options = []
+                for opt in raw_options:
+                    val = opt.get("option_value")
+                    if val and val not in parsed_options:
+                        parsed_options.append(val)
+
+                if not parsed_options:
+                    if "스니커즈" in prod_name or "신발" in category_name:
+                        parsed_options = ["240", "250", "260", "270", "280"]
+                    elif "팬츠" in prod_name or "하의" in category_name:
+                        parsed_options = ["S (28)", "M (30)", "L (32)", "XL (34)"]
+                    elif "모자" in prod_name or "볼캡" in prod_name or "acc" in str(category_data).lower():
+                        parsed_options = ["FREE"]
+                    else:
+                        parsed_options = ["S (90)", "M (95)", "L (100)", "XL (105)"]
+
                 product = {
                     "id": item.get("id"),
                     "name": prod_name,
@@ -192,15 +210,23 @@ def product_detail(product_id):
                     "badge": item.get("badge") or "HOT",
                     "badge_class": item.get("badge_class") or "bg-primary",
                     "rating": item.get("rating_avg") or 5.0,
+                    "options": parsed_options,
                 }
         except Exception as e:
             print(f"[Supabase 상품 상세 조회 실패] {e}", file=sys.stderr)
             traceback.print_exc()
 
+    # 위시리스트 여부 확인
+    is_in_wishlist = False
+    if product:
+        wishlist = _get_wishlist()
+        is_in_wishlist = any(w.get("id") == str(product["id"]) or w.get("name") == product["name"] for w in wishlist)
+
     return render_template(
         "detail.html",
         brand_name="VIBE-FASHION",
-        product=product
+        product=product,
+        is_in_wishlist=is_in_wishlist
     )
 
 
@@ -286,8 +312,8 @@ def api_cart_add():
     option = data.get("option") or "FREE"
     quantity = int(data.get("quantity", 1))
 
-    # product_id가 없으면 상품명 기반 키 생성
-    key = product_id if product_id else product_name
+    # product_id와 option 조합으로 고유 키 생성
+    key = f"{product_id}_{option}" if product_id else f"{product_name}_{option}"
 
     cart = _get_cart()
     if key in cart:

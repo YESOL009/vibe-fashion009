@@ -23,9 +23,19 @@
 
         <!-- 상품 구매 정보 -->
         <div class="col-lg-6 d-flex flex-column justify-content-center">
-            <div class="mb-2">
-                <span class="badge {{ product.badge_class }} me-2">{{ product.badge }}</span>
-                <span class="text-muted fw-semibold">{{ product.category }}</span>
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                    <span class="badge {{ product.badge_class }} me-2">{{ product.badge }}</span>
+                    <span class="text-muted fw-semibold">{{ product.category }}</span>
+                </div>
+                <!-- 관심상품(하트) 토글 버튼 -->
+                <button class="btn btn-outline-danger btn-sm rounded-circle p-2 shadow-sm d-flex align-items-center justify-content-center"
+                        id="detail-wishlist-btn"
+                        onclick="toggleWishlistAction('{{ product.id }}', '{{ product.name }}', '{{ product.price }}', '{{ product.thumbnail_url }}', this)"
+                        title="관심상품 등록/해제"
+                        style="width: 42px; height: 42px;">
+                    <i class="bi {% if is_in_wishlist %}bi-heart-fill text-danger{% else %}bi-heart{% endif %} fs-5"></i>
+                </button>
             </div>
 
             <h1 class="fw-bold mb-3">{{ product.name }}</h1>
@@ -53,20 +63,30 @@
                 {{ product.description }}
             </p>
 
-            <!-- 옵션 선택 예시 -->
-            <div class="mb-3">
-                <label class="form-label fw-bold small">사이즈 선택</label>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-outline-dark btn-sm px-3 active">M (95~100)</button>
-                    <button class="btn btn-outline-dark btn-sm px-3">L (100~105)</button>
-                    <button class="btn btn-outline-dark btn-sm px-3">XL (105~110)</button>
+            <!-- 사이즈 선택 영역 (모든 상품 동적 렌더링) -->
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="form-label fw-bold small mb-0">사이즈 선택</label>
+                    <span class="text-muted extra-small">선택된 사이즈: <strong id="selected-option-label" class="text-dark">{{ product.options[0] if product.options else 'FREE' }}</strong></span>
+                </div>
+                <input type="hidden" id="selected-option-input" value="{{ product.options[0] if product.options else 'FREE' }}">
+                <div class="d-flex flex-wrap gap-2" id="size-options-container">
+                    {% for opt in product.options %}
+                    <button type="button" 
+                            class="btn btn-outline-dark btn-sm px-3 py-2 fw-semibold size-select-btn {% if loop.first %}active bg-dark text-white{% endif %}" 
+                            data-option="{{ opt }}" 
+                            onclick="selectProductOption('{{ opt }}', this)">
+                        {{ opt }}
+                    </button>
+                    {% endfor %}
                 </div>
             </div>
 
             <!-- 구매 / 장바구니 버튼 -->
-            <div class="d-flex gap-3 mt-3">
-                <button class="btn btn-outline-dark btn-lg flex-grow-1 fw-bold" onclick="addToCartAction('{{ product.id }}', '{{ product.name }}', '{{ product.price }}', '{{ product.thumbnail_url }}')">
-                    <i class="bi bi-bag-plus me-2"></i>장바구니 담기
+            <div class="d-flex gap-3 mt-2">
+                <button class="btn btn-outline-dark btn-lg flex-grow-1 fw-bold d-flex align-items-center justify-content-center gap-2" 
+                        onclick="addCurrentDetailToCart('{{ product.id }}', '{{ product.name }}', '{{ product.price }}', '{{ product.thumbnail_url }}')">
+                    <i class="bi bi-bag-plus"></i>장바구니 담기
                 </button>
                 <a href="{{ url_for('main.cart_page') }}" class="btn btn-warning btn-lg flex-grow-1 fw-bold text-dark d-flex align-items-center justify-content-center">
                     장바구니 확인하기

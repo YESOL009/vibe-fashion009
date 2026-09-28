@@ -51,6 +51,39 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
+ * 상세 페이지 사이즈 옵션 선택 핸들러
+ */
+function selectProductOption(optionValue, btnElement) {
+    const input = document.getElementById('selected-option-input');
+    const label = document.getElementById('selected-option-label');
+    if (input) input.value = optionValue;
+    if (label) label.innerText = optionValue;
+
+    const container = document.getElementById('size-options-container');
+    if (container) {
+        const buttons = container.querySelectorAll('.size-select-btn');
+        buttons.forEach(b => {
+            b.classList.remove('active', 'bg-dark', 'text-white');
+            b.classList.add('btn-outline-dark');
+        });
+    }
+
+    if (btnElement) {
+        btnElement.classList.add('active', 'bg-dark', 'text-white');
+        btnElement.classList.remove('btn-outline-dark');
+    }
+}
+
+/**
+ * 상세 페이지에서 선택된 사이즈 옵션과 함께 장바구니 담기
+ */
+function addCurrentDetailToCart(productId, productName, price, thumbnailUrl) {
+    const input = document.getElementById('selected-option-input');
+    const option = input ? input.value : 'FREE';
+    addToCartAction(productId, productName, price, thumbnailUrl, option);
+}
+
+/**
  * 장바구니 추가 액션 (서버 API 연동)
  */
 function addToCartAction(productId, productName, price, thumbnailUrl, option = 'FREE') {
