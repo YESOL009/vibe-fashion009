@@ -7,7 +7,6 @@ import os
 import sys
 import traceback
 from flask import Blueprint, render_template, session, jsonify, request, redirect, url_for, flash
-from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -50,7 +49,7 @@ DEFAULT_ORIGINAL_PRICES = {
 
 def get_featured_products(limit: int = 4):
     """
-    Supabase products 테이블에서 is_active=true이고 is_featured=true인 상품을 조회합니다.
+    Supabase products 테이블에서 is_active=true인 추천 상품을 조회합니다.
     - 실패 시 빈 리스트를 반환하며 터미널에 에러 로그를 출력합니다.
     - 가격 포맷팅({:,}원) 및 thumbnail_url 처리를 수행합니다.
     """
@@ -59,32 +58,14 @@ def get_featured_products(limit: int = 4):
         return []
 
     try:
-        # 1차 시도: is_active=true 및 is_featured=true 조건으로 최대 4개 조회
-        try:
-            query = (
-                supabase.table("products")
-                .select("*, categories(name, slug), product_images(*)")
-                .eq("is_active", True)
-                .eq("is_featured", True)
-                .limit(limit)
-            )
-            response = query.execute()
-            data = response.data or []
-        except Exception as filter_err:
-            # DB 컬럼에 is_featured가 없을 경우 콘솔에 알림 후 is_active=True로 안전 대체
-            err_msg = str(filter_err)
-            if "is_featured" in err_msg:
-                print("[Supabase 알림] products 테이블에 is_featured 컬럼이 없어 is_active=true 상품을 조회합니다.", file=sys.stderr)
-                query = (
-                    supabase.table("products")
-                    .select("*, categories(name, slug), product_images(*)")
-                    .eq("is_active", True)
-                    .limit(limit)
-                )
-                response = query.execute()
-                data = response.data or []
-            else:
-                raise filter_err
+        query = (
+            supabase.table("products")
+            .select("*, categories(name, slug), product_images(*)")
+            .eq("is_active", True)
+            .limit(limit)
+        )
+        response = query.execute()
+        data = response.data or []
 
         seen_names = set()
         formatted_products = []
@@ -636,131 +617,37 @@ def api_counts():
 
 
 # -----------------------------------------------------------------------------
-# 사용자 인증 (회원가입 / 로그인 / 로그아웃) 라우트
+# 사용자 마이페이지 및 기존 라우트 호환
 # -----------------------------------------------------------------------------
 
-# 간이 사용자 저장소 (세션 및 인메모리)
-_USERS_DB = {}
+@main_bp.route("/mypage")
+def mypage():
+    """마이페이지 - 인증된 회원 정보 조회"""
+    user_id = session.get("user_id")
+    if not user_id:
+        return redirect(url_for("auth.login", error="login_required"))
+
+    user = session.get("user")
+    return render_template(
+        "mypage.html",
+        brand_name="VIBE-FASHION",
+        user=user
+    )
 
 
 @main_bp.route("/register", methods=["GET", "POST"])
 def register_page():
-    """회원가입 페이지"""
-    if "user" in session:
-        return redirect(url_for("main.index"))
-
-    if request.method == "POST":
-        name = (request.form.get("name") or "").strip()
-        email = (request.form.get("email") or "").strip().lower()
-        password = request.form.get("password") or ""
-        password_confirm = request.form.get("password_confirm") or ""
-
-        if not name or not email or not password:
-            flash("모든 필수 항목을 입력해주세요.", "error")
-            return render_template("register.html", brand_name="VIBE-FASHION")
-
-        if password != password_confirm:
-            flash("비밀번호가 일치하지 않습니다.", "error")
-            return render_template("register.html", brand_name="VIBE-FASHION")
-
-        if len(password) < 6:
-            flash("비밀번호는 최소 6자 이상이어야 합니다.", "error")
-            return render_template("register.html", brand_name="VIBE-FASHION")
-
-        # Supabase Auth 회원가입 시도 (옵션)
-        if supabase:
-            try:
-                supabase.auth.sign_up({
-                    "email": email,
-                    "password": password,
-                    "options": {"data": {"full_name": name}}
-                })
-            except Exception as e:
-                print(f"[Supabase Auth 회원가입 알림] {e}", file=sys.stderr)
-
-        # 로컬 세션 사용자 저장소에 등록
-        _USERS_DB[email] = {
-            "name": name,
-            "email": email,
-            "password_hash": generate_password_hash(password)
-        }
-
-        # 가입 완료 후 자동 로그인 처리
-        session["user"] = {
-            "name": name,
-            "email": email
-        }
-        session.modified = True
-
-        flash(f"환영합니다, {name}님! 회원가입이 완료되었습니다. (15% 쿠폰 지급 완료)", "success")
-        return redirect(url_for("main.index"))
-
-    return render_template("register.html", brand_name="VIBE-FASHION")
+    """기존 회원가입 URL 호환 (auth.signup으로 연결)"""
+    return redirect(url_for("auth.signup"))
 
 
 @main_bp.route("/login", methods=["GET", "POST"])
 def login_page():
-    """로그인 페이지"""
-    if "user" in session:
-        return redirect(url_for("main.index"))
-
-    if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
-        password = request.form.get("password") or ""
-
-        if not email or not password:
-            flash("이메일과 비밀번호를 모두 입력해주세요.", "error")
-            return render_template("login.html", brand_name="VIBE-FASHION")
-
-        user_info = _USERS_DB.get(email)
-        login_success = False
-        user_name = email.split("@")[0]
-
-        # 1. Supabase Auth 시도
-        if supabase:
-            try:
-                res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                if res and res.user:
-                    login_success = True
-                    user_name = res.user.user_metadata.get("full_name") or user_name
-            except Exception as e:
-                print(f"[Supabase Auth 로그인 시도] {e}", file=sys.stderr)
-
-        # 2. 로컬 메모리 사용자 검증
-        if not login_success and user_info:
-            if check_password_hash(user_info["password_hash"], password):
-                login_success = True
-                user_name = user_info["name"]
-
-        # 3. 개발/테스트 편의를 위해 등록된 계정이거나 유효한 형식일 때 로그인 지원
-        if not login_success and user_info is None and len(password) >= 6:
-            login_success = True
-            user_name = email.split("@")[0]
-            _USERS_DB[email] = {
-                "name": user_name,
-                "email": email,
-                "password_hash": generate_password_hash(password)
-            }
-
-        if login_success:
-            session["user"] = {
-                "name": user_name,
-                "email": email
-            }
-            session.modified = True
-            flash(f"반갑습니다, {user_name}님!", "success")
-            return redirect(url_for("main.index"))
-        else:
-            flash("이메일 또는 비밀번호가 올바르지 않습니다.", "error")
-            return render_template("login.html", brand_name="VIBE-FASHION")
-
-    return render_template("login.html", brand_name="VIBE-FASHION")
+    """기존 로그인 URL 호환 (auth.login으로 연결)"""
+    return redirect(url_for("auth.login"))
 
 
 @main_bp.route("/logout")
 def logout():
-    """로그아웃 처리"""
-    session.pop("user", None)
-    session.modified = True
-    flash("로그아웃되었습니다.", "info")
-    return redirect(url_for("main.index"))
+    """기존 로그아웃 URL 호환 (auth.logout으로 연결)"""
+    return redirect(url_for("auth.logout"))

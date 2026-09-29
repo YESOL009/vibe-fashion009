@@ -13,6 +13,22 @@
                     <p class="text-muted small">VIBE-FASHION의 특별한 회원 혜택을 누려보세요.</p>
                 </div>
 
+                <!-- URL 파라미터 에러 메시지 (Bootstrap 5 alert) -->
+                {% if error %}
+                <div class="alert alert-danger alert-dismissible fade show py-2 px-3 small rounded-3 mb-3" role="alert">
+                    <i class="bi bi-exclamation-circle-fill me-1"></i>{{ error }}
+                    <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endif %}
+
+                <!-- URL 파라미터 성공 메시지 (Bootstrap 5 alert) -->
+                {% if success %}
+                <div class="alert alert-success alert-dismissible fade show py-2 px-3 small rounded-3 mb-3" role="alert">
+                    <i class="bi bi-check-circle-fill me-1"></i>{{ success }}
+                    <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endif %}
+
                 <!-- 플래시 메시지 (에러/안내) -->
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
@@ -24,7 +40,7 @@
                     {% endif %}
                 {% endwith %}
 
-                <form method="POST" action="{{ url_for('main.login_page') }}">
+                <form method="POST" action="{{ url_for('auth.login') }}">
                     <div class="mb-3">
                         <label for="email" class="form-label fw-semibold small">이메일 계정</label>
                         <div class="input-group">
@@ -36,11 +52,11 @@
                     <div class="mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <label for="password" class="form-label fw-semibold small mb-0">비밀번호</label>
-                            <a href="#" class="text-muted extra-small text-decoration-none hover-warning" onclick="showToast('비밀번호 찾기 기능은 준비 중입니다.')">비밀번호 찾기</a>
+                            <a href="{{ url_for('auth.forgot_password') }}" class="text-muted extra-small text-decoration-none hover-warning">비밀번호 찾기</a>
                         </div>
                         <div class="input-group">
                             <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-lock"></i></span>
-                            <input type="password" class="form-control border-start-0 ps-0" id="password" name="password" placeholder="6자리 이상 비밀번호 입력" required>
+                            <input type="password" class="form-control border-start-0 ps-0" id="password" name="password" placeholder="비밀번호 입력" required>
                         </div>
                     </div>
 
@@ -48,13 +64,33 @@
                         <button type="submit" class="btn btn-dark btn-lg fw-bold py-3 shadow-sm">
                             로그인
                         </button>
+
+                        <div class="position-relative text-center my-2">
+                            <hr class="text-muted">
+                            <span class="position-absolute top-50 start-50 translate-middle bg-white px-2 extra-small text-muted">간편 로그인</span>
+                        </div>
+
+                        <!-- 카카오 로그인 -->
+                        <a href="{{ url_for('auth.kakao_login') }}" class="btn btn-lg fw-bold py-3 text-dark text-decoration-none shadow-sm d-flex align-items-center justify-content-center gap-2 w-100" style="background-color: #FEE500; color: #000000; border: none;">
+                            <i class="bi bi-chat-fill"></i> 카카오로 로그인
+                        </a>
+
+                        <!-- 네이버 로그인 -->
+                        <a href="{{ url_for('auth.naver_login') }}" class="btn btn-lg fw-bold py-3 text-white text-decoration-none shadow-sm d-flex align-items-center justify-content-center gap-2 w-100" style="background-color: #03C75A; border: none;">
+                            <span class="fw-black me-1" style="font-size: 1.1rem; font-family: sans-serif;">N</span> 네이버로 로그인
+                        </a>
+
+                        <!-- 구글 로그인 -->
+                        <a href="{{ url_for('auth.google_login') }}" class="btn btn-lg fw-bold py-3 text-dark text-decoration-none shadow-sm d-flex align-items-center justify-content-center gap-2 w-100 bg-white border">
+                            <i class="bi bi-google text-danger"></i> Google로 로그인
+                        </a>
                     </div>
                 </form>
 
                 <div class="text-center mt-4 pt-3 border-top">
                     <p class="text-muted small mb-0">
                         아직 계정이 없으신가요? 
-                        <a href="{{ url_for('main.register_page') }}" class="text-dark fw-bold text-decoration-none hover-warning ms-1">
+                        <a href="{{ url_for('auth.signup') }}" class="text-dark fw-bold text-decoration-none hover-warning ms-1">
                             회원가입하기 <i class="bi bi-arrow-right"></i>
                         </a>
                     </p>

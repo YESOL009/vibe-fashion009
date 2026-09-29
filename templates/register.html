@@ -13,6 +13,14 @@
                     <p class="text-muted small">지금 가입하시면 <strong>15% 웰컴 쿠폰</strong>과 <strong>1,000P</strong>를 즉시 드립니다.</p>
                 </div>
 
+                <!-- URL 파라미터 에러 메시지 (Bootstrap 5 alert) -->
+                {% if error %}
+                <div class="alert alert-danger alert-dismissible fade show py-2 px-3 small rounded-3 mb-3" role="alert">
+                    <i class="bi bi-exclamation-circle-fill me-1"></i>{{ error }}
+                    <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endif %}
+
                 <!-- 플래시 메시지 -->
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
@@ -24,7 +32,7 @@
                     {% endif %}
                 {% endwith %}
 
-                <form method="POST" action="{{ url_for('main.register_page') }}">
+                <form method="POST" action="{{ url_for('auth.signup') }}">
                     <div class="mb-3">
                         <label for="name" class="form-label fw-semibold small">이름 / 닉네임</label>
                         <div class="input-group">
@@ -68,13 +76,33 @@
                         <button type="submit" class="btn btn-warning btn-lg fw-bold py-3 text-dark shadow-sm">
                             회원가입 완료 &amp; 15% 쿠폰 받기
                         </button>
+
+                        <div class="position-relative text-center my-2">
+                            <hr class="text-muted">
+                            <span class="position-absolute top-50 start-50 translate-middle bg-white px-2 extra-small text-muted">간편 가입</span>
+                        </div>
+
+                        <!-- 카카오 간편가입 -->
+                        <a href="{{ url_for('auth.kakao_login') }}" class="btn btn-lg fw-bold py-3 text-dark text-decoration-none shadow-sm d-flex align-items-center justify-content-center gap-2 w-100" style="background-color: #FEE500; color: #000000; border: none;">
+                            <i class="bi bi-chat-fill"></i> 카카오로 시작하기
+                        </a>
+
+                        <!-- 네이버 간편가입 -->
+                        <a href="{{ url_for('auth.naver_login') }}" class="btn btn-lg fw-bold py-3 text-white text-decoration-none shadow-sm d-flex align-items-center justify-content-center gap-2 w-100" style="background-color: #03C75A; border: none;">
+                            <span class="fw-black me-1" style="font-size: 1.1rem; font-family: sans-serif;">N</span> 네이버로 시작하기
+                        </a>
+
+                        <!-- 구글 간편가입 -->
+                        <a href="{{ url_for('auth.google_login') }}" class="btn btn-lg fw-bold py-3 text-dark text-decoration-none shadow-sm d-flex align-items-center justify-content-center gap-2 w-100 bg-white border">
+                            <i class="bi bi-google text-danger"></i> Google로 시작하기
+                        </a>
                     </div>
                 </form>
 
                 <div class="text-center mt-4 pt-3 border-top">
                     <p class="text-muted small mb-0">
                         이미 회원이신가요? 
-                        <a href="{{ url_for('main.login_page') }}" class="text-dark fw-bold text-decoration-none hover-warning ms-1">
+                        <a href="{{ url_for('auth.login') }}" class="text-dark fw-bold text-decoration-none hover-warning ms-1">
                             로그인하기 <i class="bi bi-arrow-right"></i>
                         </a>
                     </p>

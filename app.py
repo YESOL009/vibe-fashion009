@@ -39,8 +39,10 @@ def create_app(test_config=None):
         app.config.update(test_config)
 
     # 블루프린트(라우트 모듈) 등록
-    # routes/main.py에 정의된 main_bp를 가져와서 앱에 연결합니다.
+    # routes/main.py에 정의된 main_bp와 app/routes/auth.py에 정의된 auth_bp를 가져와서 앱에 연결합니다.
     from routes.main import main_bp
+    from app.routes.auth import auth_bp
     app.register_blueprint(main_bp)
+    app.register_blueprint(auth_bp)
 
     return app

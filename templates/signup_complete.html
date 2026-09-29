@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}가입 완료 안내 | {{ brand_name }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-7 col-lg-5">
+            <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white text-center">
+                <div class="d-inline-flex align-items-center justify-content-center bg-primary bg-opacity-10 text-primary rounded-circle mx-auto mb-4" style="width: 80px; height: 80px;">
+                    <i class="bi bi-envelope-check-fill fs-1"></i>
+                </div>
+
+                <h3 class="fw-black mb-2">인증 메일을 보냈습니다</h3>
+                <p class="text-muted small mb-4">
+                    {% if email %}
+                    <strong class="text-dark">{{ email }}</strong> 주소로 인증 링크를 발송했습니다.<br>
+                    {% endif %}
+                    메일함에서 인증 링크를 클릭하여 가입을 완료해주세요.
+                </p>
+
+                <div class="alert alert-info border-0 rounded-3 text-start small mb-4" role="alert">
+                    <div class="d-flex align-items-start gap-2">
+                        <i class="bi bi-info-circle-fill text-primary mt-1"></i>
+                        <div>
+                            <strong>이메일이 도착하지 않았나요?</strong>
+                            <p class="mb-0 text-muted extra-small mt-1">스팸 메일함을 확인하시거나 몇 분 후 다시 확인해주세요. 인증을 완료해야 정상적으로 로그인이 가능합니다.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('auth.login') }}" class="btn btn-dark py-3 fw-bold rounded-3">
+                        로그인 페이지로 이동
+                    </a>
+                    <a href="{{ url_for('main.index') }}" class="btn btn-light py-2 text-muted small rounded-3">
+                        메인으로 돌아가기
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
