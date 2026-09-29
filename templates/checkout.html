@@ -57,9 +57,14 @@
                         <h5 class="fw-bold mb-0 d-flex align-items-center">
                             <i class="bi bi-ticket-perforated-fill text-warning me-2"></i>할인 쿠폰 적용
                         </h5>
+                        {% if is_logged_in %}
                         <span class="badge bg-warning text-dark fw-bold">사용 가능 {{ available_coupons|length }}장</span>
+                        {% else %}
+                        <span class="badge bg-secondary text-white fw-bold">회원 전용 혜택</span>
+                        {% endif %}
                     </div>
                     
+                    {% if is_logged_in %}
                     <p class="text-muted small mb-3">
                         보유하신 할인 쿠폰을 선택하시면 결제 금액에 즉시 할인 혜택이 적용됩니다.
                     </p>
@@ -83,6 +88,27 @@
                         <span class="small text-muted"><i class="bi bi-check-circle-fill text-success me-1"></i>쿠폰 할인액:</span>
                         <span class="fw-bold text-danger fs-6" id="coupon-discount-text">-0원</span>
                     </div>
+                    {% else %}
+                    <!-- 비로그인 안내 -->
+                    <div class="alert alert-light border rounded-3 p-3 mb-0">
+                        <div class="d-flex align-items-start gap-2">
+                            <i class="bi bi-info-circle-fill text-warning fs-5"></i>
+                            <div>
+                                <strong class="small text-dark">신규회원 가입 15% 웰컴 쿠폰은 로그인 후 이용하실 수 있습니다.</strong>
+                                <p class="text-muted extra-small mb-2 mt-1">지금 간편 가입하시고 즉시 15% 할인 혜택을 받아보세요!</p>
+                                <div class="d-flex gap-2">
+                                    <a href="{{ url_for('auth.login') }}" class="btn btn-dark btn-sm fw-bold px-3 py-1 extra-small">
+                                        로그인하고 쿠폰 받기
+                                    </a>
+                                    <a href="{{ url_for('auth.signup') }}" class="btn btn-outline-warning text-dark btn-sm fw-bold px-3 py-1 extra-small">
+                                        회원가입
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="coupon-select" name="coupon_code" value="">
+                    {% endif %}
                 </div>
 
                 <!-- 3. 결제 수단 선택 -->
@@ -210,11 +236,22 @@
 <script>
     const BASE_TOTAL_PRICE = {{ total_price }};
     const BASE_SHIPPING_FEE = {{ shipping_fee }};
+    const IS_LOGGED_IN = {{ 'true' if is_logged_in else 'false' }};
 
     function applyCoupon(couponCode) {
+        if (!IS_LOGGED_IN) {
+            document.getElementById('summary-discount-price').innerText = '-0원';
+            document.getElementById('summary-final-total').innerText = (BASE_TOTAL_PRICE + BASE_SHIPPING_FEE).toLocaleString() + '원';
+            document.getElementById('pay-button-text').innerText = (BASE_TOTAL_PRICE + BASE_SHIPPING_FEE).toLocaleString() + '원 결제하기';
+            document.getElementById('form-discount-amount').value = 0;
+            document.getElementById('form-final-amount').value = BASE_TOTAL_PRICE + BASE_SHIPPING_FEE;
+            return;
+        }
+
         const select = document.getElementById('coupon-select');
+        if (!select || !select.options) return;
         const selectedOption = select.options[select.selectedIndex];
-        const rate = parseFloat(selectedOption.getAttribute('data-discount-rate') || 0);
+        const rate = parseFloat(selectedOption ? selectedOption.getAttribute('data-discount-rate') : 0) || 0;
 
         let discount = 0;
         if (rate > 0) {
@@ -224,7 +261,10 @@
         const finalTotal = Math.max(0, BASE_TOTAL_PRICE - discount) + BASE_SHIPPING_FEE;
 
         // UI 갱신
-        document.getElementById('coupon-discount-text').innerText = '-' + discount.toLocaleString() + '원';
+        const couponDiscountText = document.getElementById('coupon-discount-text');
+        if (couponDiscountText) {
+            couponDiscountText.innerText = '-' + discount.toLocaleString() + '원';
+        }
         document.getElementById('summary-discount-price').innerText = '-' + discount.toLocaleString() + '원';
         document.getElementById('summary-final-total').innerText = finalTotal.toLocaleString() + '원';
         document.getElementById('pay-button-text').innerText = finalTotal.toLocaleString() + '원 결제하기';
@@ -235,7 +275,12 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        applyCoupon(document.getElementById('coupon-select').value);
+        const select = document.getElementById('coupon-select');
+        if (select && select.value !== undefined) {
+            applyCoupon(select.value);
+        } else {
+            applyCoupon('');
+        }
     });
 </script>
 {% endblock %}

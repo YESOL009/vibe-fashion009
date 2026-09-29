@@ -324,9 +324,16 @@ def wishlist_page():
 # 주문 및 결제 (Checkout) 라우트
 # -----------------------------------------------------------------------------
 
-def _get_available_coupons():
-    """사용자가 사용 가능한 쿠폰 목록 반환"""
-    # 신규 가입 15% 웰컴 쿠폰 및 무료 배송 쿠폰 등
+def _get_available_coupons(is_logged_in: bool = False):
+    """
+    사용자가 사용 가능한 쿠폰 목록 반환
+    - 로그인된 회원에게만 신규회원 웰컴 쿠폰 제공
+    - 비로그인(게스트)은 회원 전용 쿠폰 사용 불가
+    """
+    if not is_logged_in:
+        return []
+
+    # 로그인 회원 전용 쿠폰 목록
     return [
         {
             "code": "WELCOME15",
@@ -381,7 +388,8 @@ def checkout_page():
     shipping_fee = 0 if (total_price >= 30000 or total_price == 0) else 3000
     final_total = total_price + shipping_fee
 
-    coupons = _get_available_coupons()
+    is_logged_in = bool(session.get("user") or session.get("user_id"))
+    coupons = _get_available_coupons(is_logged_in=is_logged_in)
 
     return render_template(
         "checkout.html",
@@ -394,6 +402,7 @@ def checkout_page():
         final_total=final_total,
         final_total_formatted=f"{final_total:,}원",
         available_coupons=coupons,
+        is_logged_in=is_logged_in,
         user=session.get("user")
     )
 
@@ -416,6 +425,8 @@ def checkout_process():
     payment_method = request.form.get("payment_method") or "신용/체크카드"
     coupon_code = request.form.get("coupon_code") or ""
 
+    is_logged_in = bool(session.get("user") or session.get("user_id"))
+
     try:
         total_price = int(request.form.get("total_price") or 0)
         discount_amount = int(request.form.get("discount_amount") or 0)
@@ -425,6 +436,12 @@ def checkout_process():
         total_price = sum(int(item.get("price", 0)) * int(item.get("quantity", 1)) for item in cart.values())
         shipping_fee = 0 if total_price >= 30000 else 3000
         discount_amount = 0
+        final_amount = total_price + shipping_fee
+
+    # 비로그인 상태에서 쿠폰 적용 시도 시 할인 무효화
+    if not is_logged_in and discount_amount > 0:
+        discount_amount = 0
+        coupon_code = ""
         final_amount = total_price + shipping_fee
 
     # 고유 주문번호 생성 (예: ORD-20260928-123456)
