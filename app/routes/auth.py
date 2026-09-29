@@ -50,8 +50,13 @@ AUTH_MESSAGES = {
 
 
 def get_site_url() -> str:
-    """사이트 URL 반환 (환경 변수 우선, 기본값 http://localhost:5000)"""
-    return os.getenv("SITE_URL", "http://localhost:5000").rstrip("/")
+    """사이트 URL 반환 (환경 변수 우선, 기본값 요청 host_url 또는 http://localhost:5000)"""
+    env_site_url = os.getenv("SITE_URL")
+    if env_site_url:
+        return env_site_url.rstrip("/")
+    if request:
+        return request.host_url.rstrip("/")
+    return "http://localhost:5000"
 
 
 def get_supabase_client() -> Client:
