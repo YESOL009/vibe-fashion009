@@ -50,13 +50,21 @@ AUTH_MESSAGES = {
 
 
 def get_site_url() -> str:
-    """사이트 URL 반환 (환경 변수 우선, 기본값 요청 host_url 또는 http://localhost:5000)"""
+    """사이트 URL 반환 (현재 요청의 host_url 우선, 없을 경우 환경 변수 SITE_URL 사용)"""
+    try:
+        from flask import has_request_context
+        if has_request_context() and request:
+            # Azure App Service 등의 프록시 환경 고려 (X-Forwarded-Proto 등)
+            scheme = request.headers.get("X-Forwarded-Proto", request.scheme)
+            host = request.headers.get("X-Forwarded-Host", request.host)
+            return f"{scheme}://{host}".rstrip("/")
+    except Exception:
+        pass
+
     env_site_url = os.getenv("SITE_URL")
     if env_site_url:
         return env_site_url.rstrip("/")
-    if request:
-        return request.host_url.rstrip("/")
-    return "http://localhost:5000"
+    return "http://localhost:5050"
 
 
 def get_supabase_client() -> Client:
@@ -320,6 +328,7 @@ def session_callback():
     data = request.get_json(silent=True) or {}
     access_token = data.get("access_token")
     refresh_token = data.get("refresh_token")
+    provider_token = data.get("provider_token")
     otp_type = data.get("type", "signup")
 
     if not access_token:
@@ -340,9 +349,19 @@ def session_callback():
             "email": user.email,
             "name": full_name
         }
+        for ident in (getattr(user, "identities", []) or []):
+            if getattr(ident, "provider", None) == "kakao" or getattr(ident, "identity_data", {}).get("provider") == "kakao":
+                kakao_id = getattr(ident, "id", None) or getattr(ident, "identity_data", {}).get("sub") or getattr(ident, "identity_data", {}).get("id")
+                if kakao_id:
+                    session["kakao_user_id"] = str(kakao_id)
+        if (user.user_metadata or {}).get("sub") and (user.app_metadata or {}).get("provider") == "kakao":
+            session["kakao_user_id"] = str(user.user_metadata["sub"])
+
         session["access_token"] = access_token
         if refresh_token:
             session["refresh_token"] = refresh_token
+        if provider_token:
+            session["provider_token"] = provider_token
         session.modified = True
 
         # recovery 타입이면 비밀번호 재설정 페이지로 리다이렉트 URL 반환
@@ -493,13 +512,16 @@ def logout():
 def withdraw():
     """
     회원 탈퇴 처리
-    - 로그인된 사용자의 소셜 로그인 연동 해제(네이버 등)
+    - 로그인된 사용자의 소셜 로그인 연동 해제(카카오, 구글, 네이버 등)
     - DB 내 장바구니, 위시리스트, 알림, 프로필 및 Supabase Auth 계정을 영구 삭제합니다.
     """
     user_id = session.get("user_id")
     naver_token = session.get("naver_access_token")
+    provider_token = session.get("provider_token")
+    admin_client = get_supabase_admin_client()
 
-    # 1. 네이버 소셜 로그인 연동 해제 처리
+    # 1. 소셜 로그인 연동 해제 (Unlink)
+    # 1-1. 네이버 연동 해제
     if naver_token:
         naver_client_id = os.getenv("NAVER_CLIENT_ID")
         naver_client_secret = os.getenv("NAVER_CLIENT_SECRET")
@@ -515,29 +537,163 @@ def withdraw():
             except Exception as unlink_err:
                 print(f"[네이버 연동 해제 호출 실패] {unlink_err}", file=sys.stderr)
 
+    # 1-2. 사용자 계정 메타데이터 및 공급자 식별
     try:
-        admin_client = get_supabase_admin_client()
+        user_info = admin_client.auth.admin.get_user_by_id(user_id)
+        user_obj = user_info.user if user_info else None
+    except Exception:
+        user_obj = None
 
-        # 2. DB 테이블 잔여 데이터 명시적 삭제 (장바구니, 리뷰, 알림, 프로필 등)
+    # 제공자 식별 (카카오, 구글 등)
+    identities = getattr(user_obj, "identities", []) or []
+    providers = [ident.provider for ident in identities if getattr(ident, "provider", None)]
+    kakao_identity = next((ident for ident in identities if ident.provider == "kakao"), None)
+
+    # 1-3. 카카오 연동 해제 (Unlink)
+    # 카카오 회원번호 파악: session 캐시 -> identities -> user_metadata
+    kakao_target_id = session.get("kakao_user_id")
+    if not kakao_target_id and user_obj:
+        for ident in getattr(user_obj, "identities", []) or []:
+            if getattr(ident, "provider", None) == "kakao":
+                idata = getattr(ident, "identity_data", {}) or {}
+                for k in ("sub", "id", "provider_id"):
+                    v = idata.get(k)
+                    if v and str(v).isdigit():
+                        kakao_target_id = str(v)
+                        break
+                if not kakao_target_id and getattr(ident, "id", None) and str(ident.id).isdigit():
+                    kakao_target_id = str(ident.id)
+                if kakao_target_id:
+                    break
+        if not kakao_target_id:
+            umeta = getattr(user_obj, "user_metadata", {}) or {}
+            for k in ("sub", "provider_id", "id"):
+                v = umeta.get(k)
+                if v and str(v).isdigit():
+                    kakao_target_id = str(v)
+                    break
+
+    kakao_unlinked = False
+    kakao_admin_key = os.getenv("KAKAO_ADMIN_KEY")
+    if kakao_admin_key:
+        # 만약 세션/메타데이터에서 target_id를 찾지 못했더라도 카카오 앱의 연결된 목록에서 조회
+        if not kakao_target_id and ("kakao" in providers or kakao_identity or (user_obj and (user_obj.app_metadata or {}).get("provider") == "kakao")):
+            try:
+                ids_req = urllib.request.Request(
+                    "https://kapi.kakao.com/v1/user/ids",
+                    headers={"Authorization": f"KakaoAK {kakao_admin_key}"}
+                )
+                with urllib.request.urlopen(ids_req) as ids_resp:
+                    ids_data = json.loads(ids_resp.read().decode())
+                    elements = ids_data.get("elements", [])
+                    user_email = (user_obj.email if user_obj else None) or session.get("user", {}).get("email")
+                    for cand_id in elements:
+                        try:
+                            u_req = urllib.request.Request(
+                                f"https://kapi.kakao.com/v2/user/me?target_id_type=user_id&target_id={cand_id}",
+                                headers={"Authorization": f"KakaoAK {kakao_admin_key}"}
+                            )
+                            with urllib.request.urlopen(u_req) as u_resp:
+                                cand_data = json.loads(u_resp.read().decode())
+                                cand_email = cand_data.get("kakao_account", {}).get("email")
+                                if cand_email and user_email and cand_email.lower() == user_email.lower():
+                                    kakao_target_id = str(cand_id)
+                                    break
+                        except Exception:
+                            pass
+                    if not kakao_target_id and len(elements) == 1:
+                        kakao_target_id = str(elements[0])
+            except Exception as e:
+                print(f"[카카오 연결 목록 조회 실패] {e}", file=sys.stderr)
+
+        if kakao_target_id:
+            try:
+                post_data = urllib.parse.urlencode({
+                    "target_id_type": "user_id",
+                    "target_id": str(kakao_target_id)
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    "https://kapi.kakao.com/v1/user/unlink",
+                    headers={
+                        "Authorization": f"KakaoAK {kakao_admin_key}",
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    data=post_data
+                )
+                with urllib.request.urlopen(req) as resp:
+                    print(f"[카카오 연동 해제(어드민키) 성공] target_id={kakao_target_id}, res={resp.read().decode()}", file=sys.stderr)
+                    kakao_unlinked = True
+            except Exception as e:
+                print(f"[카카오 어드민키 연동 해제 실패] target_id={kakao_target_id}, {e}", file=sys.stderr)
+
+    # 방식 B: target_id로 실패했거나 없으면 사용자 OAuth access token으로 언링크
+    if not kakao_unlinked and provider_token:
+        try:
+            req = urllib.request.Request(
+                "https://kapi.kakao.com/v1/user/unlink",
+                headers={
+                    "Authorization": f"Bearer {provider_token}",
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                data=b""
+            )
+            with urllib.request.urlopen(req) as resp:
+                print(f"[카카오 연동 해제(토큰) 성공] {resp.read().decode()}", file=sys.stderr)
+                kakao_unlinked = True
+        except Exception as e:
+            print(f"[카카오 토큰 연동 해제 시도 실패] {e}", file=sys.stderr)
+
+    # 1-4. 구글 연동 해제 (Token Revocation)
+    if provider_token and "google" in providers:
+        try:
+            revoke_url = f"https://oauth2.googleapis.com/revoke?token={provider_token}"
+            req = urllib.request.Request(
+                revoke_url,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                data=b""
+            )
+            with urllib.request.urlopen(req) as resp:
+                print(f"[구글 연동 해제 성공] {resp.status}", file=sys.stderr)
+        except Exception as e:
+            print(f"[구글 연동 해제 호출 실패] {e}", file=sys.stderr)
+
+    try:
+        # 2. DB 테이블 잔여 데이터 명시적 삭제 (주문 내역, 장바구니, 리뷰, 알림, 프로필 등)
         try:
             admin_client.table("carts").delete().eq("user_id", user_id).execute()
-        except Exception:
-            pass
+        except Exception as err:
+            print(f"[탈퇴 처리 알림] carts 정리: {err}", file=sys.stderr)
+        try:
+            admin_client.table("refunds").delete().eq("user_id", user_id).execute()
+        except Exception as err:
+            print(f"[탈퇴 처리 알림] refunds 정리: {err}", file=sys.stderr)
+        try:
+            admin_client.table("order_items").delete().in_("order_id", [o["id"] for o in admin_client.table("orders").select("id").eq("user_id", user_id).execute().data or []]).execute()
+        except Exception as err:
+            print(f"[탈퇴 처리 알림] order_items 정리: {err}", file=sys.stderr)
+        try:
+            admin_client.table("orders").delete().eq("user_id", user_id).execute()
+        except Exception as err:
+            print(f"[탈퇴 처리 알림] orders 정리: {err}", file=sys.stderr)
         try:
             admin_client.table("reviews").delete().eq("user_id", user_id).execute()
-        except Exception:
-            pass
+        except Exception as err:
+            print(f"[탈퇴 처리 알림] reviews 정리: {err}", file=sys.stderr)
         try:
             admin_client.table("notifications").delete().eq("user_id", user_id).execute()
-        except Exception:
-            pass
+        except Exception as err:
+            print(f"[탈퇴 처리 알림] notifications 정리: {err}", file=sys.stderr)
         try:
             admin_client.table("profiles").delete().eq("id", user_id).execute()
-        except Exception:
-            pass
+        except Exception as err:
+            print(f"[탈퇴 처리 알림] profiles 정리: {err}", file=sys.stderr)
 
         # 3. Supabase Auth 사용자 영구 삭제
-        admin_client.auth.admin.delete_user(user_id)
+        try:
+            admin_client.auth.admin.delete_user(user_id)
+        except Exception as auth_del_err:
+            print(f"[Supabase Auth delete_user 실패] {auth_del_err}", file=sys.stderr)
+            raise auth_del_err
 
         # 4. 세션 및 쿠키 데이터 완전 파기
         session.clear()
@@ -597,9 +753,22 @@ def auth_callback():
                     "email": user.email,
                     "name": full_name
                 }
+                # identities에서 kakao 회원번호(target_id) 즉시 세션에 캐싱
+                for ident in (getattr(user, "identities", []) or []):
+                    if getattr(ident, "provider", None) == "kakao" or getattr(ident, "identity_data", {}).get("provider") == "kakao":
+                        kakao_id = getattr(ident, "id", None) or getattr(ident, "identity_data", {}).get("sub") or getattr(ident, "identity_data", {}).get("id")
+                        if kakao_id:
+                            session["kakao_user_id"] = str(kakao_id)
+                # user_metadata의 provider_id / sub도 확인
+                if (user.user_metadata or {}).get("sub") and (user.app_metadata or {}).get("provider") == "kakao":
+                    session["kakao_user_id"] = str(user.user_metadata["sub"])
+
                 if auth_session:
                     session["access_token"] = auth_session.access_token
                     session["refresh_token"] = auth_session.refresh_token
+                    # 소셜 제공자(카카오, 구글 등)의 OAuth access token 저장 (탈퇴 시 unlink용)
+                    if getattr(auth_session, "provider_token", None):
+                        session["provider_token"] = auth_session.provider_token
                 session.modified = True
                 return redirect(url_for("main.mypage"))
 
@@ -683,6 +852,7 @@ def kakao_login():
             "provider": "kakao",
             "options": {
                 "redirect_to": redirect_to,
+                "scopes": "account_email profile_nickname profile_image",
                 "query_params": {
                     "prompt": "login"
                 }

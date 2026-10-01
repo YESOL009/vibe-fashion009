@@ -25,6 +25,7 @@
         const params = new URLSearchParams(hash);
         const accessToken = params.get('access_token');
         const refreshToken = params.get('refresh_token');
+        const providerToken = params.get('provider_token');
         const type = params.get('type') || 'signup';
         const error = params.get('error');
         const errorDescription = params.get('error_description');
@@ -42,6 +43,7 @@
                 body: JSON.stringify({
                     access_token: accessToken,
                     refresh_token: refreshToken,
+                    provider_token: providerToken,
                     type: type
                 })
             })

@@ -18,8 +18,16 @@
 
                 <!-- 에러 및 성공 알림 -->
                 {% if request.args.get('error') %}
-                <div class="alert alert-danger py-2 px-3 small rounded-3 mb-3" role="alert">
-                    <i class="bi bi-exclamation-circle me-1"></i>{{ request.args.get('error') }}
+                <div class="alert alert-danger py-2 px-3 small rounded-3 mb-3 alert-dismissible fade show" role="alert">
+                    <i class="bi bi-exclamation-circle-fill me-1"></i>
+                    {% if request.args.get('error') == 'withdraw_failed' %}
+                        회원 탈퇴 처리 중 오류가 발생했습니다. 다시 시도해주세요.
+                    {% elif request.args.get('error') == 'login_required' %}
+                        로그인이 필요한 서비스입니다.
+                    {% else %}
+                        {{ request.args.get('error') }}
+                    {% endif %}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
                 {% endif %}
 
