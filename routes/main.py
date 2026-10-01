@@ -168,11 +168,16 @@ def index():
 
 
 @main_bp.route("/product/<product_id>")
+@main_bp.route("/products/<product_id>")
 def product_detail(product_id):
     """
     상품 상세 페이지 라우트 (단일 상품 보기)
+    - GET /product/<product_id> 및 GET /products/<product_id> 호환
+    - Supabase에서 product_id로 상품 정보 조회
+    - product_options 테이블에서 색상(color) DISTINCT 조회
     """
     product = None
+    colors = []
     if supabase:
         try:
             res = (
@@ -207,8 +212,14 @@ def product_detail(product_id):
                 category_data = item.get("categories")
                 category_name = category_data.get("name") if isinstance(category_data, dict) else "FASHION"
 
-                # 옵션 파싱 (DB 등록 옵션 우선, 없을 경우 기본 사이즈 세팅)
+                # product_options에서 color가 존재하는 고유 색상 목록(DISTINCT) 추출
                 raw_options = item.get("product_options") or []
+                for opt in raw_options:
+                    c = opt.get("color")
+                    if c and c not in colors:
+                        colors.append(c)
+
+                # 옵션 파싱 (기존 옵션 호환용)
                 parsed_options = []
                 for opt in raw_options:
                     val = opt.get("option_value")
@@ -246,6 +257,7 @@ def product_detail(product_id):
                     "badge_class": item.get("badge_class") or "bg-primary",
                     "rating": item.get("rating_avg") or 5.0,
                     "options": parsed_options,
+                    "colors": colors,
                 }
         except Exception as e:
             print(f"[Supabase 상품 상세 조회 실패] {e}", file=sys.stderr)
@@ -261,8 +273,47 @@ def product_detail(product_id):
         "detail.html",
         brand_name="VIBE-FASHION",
         product=product,
+        colors=colors,
         is_in_wishlist=is_in_wishlist
     )
+
+
+@main_bp.route("/api/products/<product_id>/sizes")
+def api_product_sizes(product_id):
+    """
+    상품 색상별 사이즈 및 재고 조회 API (GET /api/products/<product_id>/sizes?color=<color>)
+    - 선택된 색상의 사이즈 목록과 재고(stock) 반환
+    """
+    selected_color = request.args.get("color", "").strip()
+    if not supabase or not product_id or not selected_color:
+        return jsonify({"success": False, "sizes": []})
+
+    try:
+        # product_options 테이블에서 해당 상품 및 색상의 옵션 목록 조회
+        res = (
+            supabase.table("product_options")
+            .select("id, size, stock, stock_quantity, option_value")
+            .eq("product_id", product_id)
+            .eq("color", selected_color)
+            .order("id")
+            .execute()
+        )
+        options = res.data or []
+        sizes = []
+        for opt in options:
+            size_val = opt.get("size") or opt.get("option_value") or "FREE"
+            # stock 우선, 없으면 stock_quantity 사용
+            stock_val = opt.get("stock") if opt.get("stock") is not None else opt.get("stock_quantity", 0)
+            sizes.append({
+                "option_id": opt.get("id"),
+                "size": size_val,
+                "stock": int(stock_val or 0),
+                "is_sold_out": int(stock_val or 0) <= 0
+            })
+        return jsonify({"success": True, "sizes": sizes})
+    except Exception as e:
+        print(f"[색상별 사이즈 조회 오류] {e}", file=sys.stderr)
+        return jsonify({"success": False, "error": str(e), "sizes": []}), 500
 
 
 def _get_cart():
