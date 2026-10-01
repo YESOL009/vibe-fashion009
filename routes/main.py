@@ -585,6 +585,60 @@ def cart_update(cart_id):
     })
 
 
+@main_bp.route("/cart/<cart_id>", methods=["DELETE"])
+def cart_delete(cart_id):
+    """
+    [DELETE /cart/<cart_id>] 장바구니 아이템 삭제 라우트
+    - 요청: 경로 매개변수 cart_id
+    - 본인 소유의 장바구니 아이템인지 확인 후 삭제
+    - 성공 시 JSON 응답 반환
+    """
+    # 1. 로그인 여부 확인
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "로그인이 필요한 서비스입니다."}), 401
+
+    admin_client = get_admin_client() or supabase
+    if not admin_client:
+        return jsonify({"success": False, "error": "데이터베이스 연결에 실패했습니다."}), 500
+
+    # 2. carts 테이블에서 해당 cart_id 조회
+    try:
+        cart_res = (
+            admin_client.table("carts")
+            .select("id, user_id")
+            .eq("id", cart_id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as e:
+        # UUID 형식이 아닌 경우 등의 DB 에러
+        print(f"[장바구니 항목 조회 오류] {e}", file=sys.stderr)
+        return jsonify({"success": False, "error": "유효하지 않은 장바구니 ID입니다."}), 400
+
+    if not cart_res or not cart_res.data:
+        return jsonify({"success": False, "error": "해당 장바구니 항목을 찾을 수 없습니다."}), 404
+
+    cart_item = cart_res.data
+    cart_user_id = cart_item.get("user_id")
+
+    # 3. 본인 소유 확인
+    if str(cart_user_id) != str(user_id):
+        return jsonify({"success": False, "error": "다른 사용자의 장바구니에 접근할 수 없습니다."}), 403
+
+    # 4. carts 테이블에서 해당 항목 삭제
+    try:
+        admin_client.table("carts").delete().eq("id", cart_id).execute()
+    except Exception as e:
+        print(f"[carts 테이블 삭제 오류] {e}", file=sys.stderr)
+        return jsonify({"success": False, "error": "장바구니 항목 삭제 중 오류가 발생했습니다."}), 500
+
+    return jsonify({
+        "success": True,
+        "message": "상품이 장바구니에서 삭제되었습니다"
+    })
+
+
 @main_bp.route("/cart")
 def cart_page():
     """
