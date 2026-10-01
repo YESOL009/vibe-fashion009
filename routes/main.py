@@ -643,29 +643,106 @@ def cart_delete(cart_id):
 def cart_page():
     """
     장바구니 페이지 라우트
-    - 세션에 저장된 장바구니 품목을 바탕으로 합계 계산 및 렌더링
+    - DB 기반 carts 테이블 (로그인 사용자)
+    - 세션 기반 cart (비로그인 사용자)
     """
-    cart = _get_cart()
+    user_id = session.get("user_id")
     items = []
     total_price = 0
 
-    for pid, info in cart.items():
-        qty = int(info.get("quantity", 1))
-        price = int(info.get("price", 0))
-        item_total = price * qty
-        total_price += item_total
+    if user_id:
+        # 로그인된 사용자: DB carts 테이블에서 조회
+        admin_client = get_admin_client() or supabase
+        if admin_client:
+            try:
+                # carts 테이블에서 사용자의 모든 장바구니 항목 조회
+                cart_res = (
+                    admin_client.table("carts")
+                    .select("id, product_id, option_id, quantity")
+                    .eq("user_id", user_id)
+                    .execute()
+                )
+                
+                for cart_item in (cart_res.data or []):
+                    cart_id = cart_item.get("id")
+                    product_id = cart_item.get("product_id")
+                    option_id = cart_item.get("option_id")
+                    qty = int(cart_item.get("quantity", 1))
+                    
+                    # 상품 정보 조회 (name, price만)
+                    product_res = (
+                        admin_client.table("products")
+                        .select("name, price")
+                        .eq("id", product_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    
+                    if not product_res or not product_res.data:
+                        continue
+                    
+                    product = product_res.data
+                    prod_name = product.get("name")
+                    price = int(product.get("price", 0))
+                    item_total = price * qty
+                    total_price += item_total
+                    
+                    # 이미지 URL 처리
+                    thumbnail_url = LOCAL_IMAGE_MAP.get(prod_name) or f"https://picsum.photos/seed/vibe_{product_id}/600/750"
+                    
+                    # 옵션 정보 조회 (색상/사이즈 등)
+                    option_res = (
+                        admin_client.table("product_options")
+                        .select("color, size")
+                        .eq("id", option_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    
+                    color = "기본"
+                    size = "기본"
+                    if option_res and option_res.data:
+                        color = option_res.data.get("color", "기본")
+                        size = option_res.data.get("size", "기본")
+                    
+                    option_str = f"{color}/{size}"
+                    
+                    items.append({
+                        "cart_id": cart_id,  # 삭제에 필요한 실제 carts.id
+                        "id": product_id,    # 상품 상세페이지용
+                        "name": prod_name,
+                        "price": price,
+                        "price_formatted": f"{price:,}원",
+                        "quantity": qty,
+                        "subtotal": item_total,
+                        "subtotal_formatted": f"{item_total:,}원",
+                        "thumbnail_url": thumbnail_url,
+                        "option": option_str
+                    })
+            except Exception as e:
+                print(f"[cart_page DB 조회 오류] {e}", file=sys.stderr)
+    
+    # 로그인하지 않았거나 DB 조회 실패 시 세션 사용
+    if not items:
+        cart = _get_cart()
+        for pid, info in cart.items():
+            qty = int(info.get("quantity", 1))
+            price = int(info.get("price", 0))
+            item_total = price * qty
+            total_price += item_total
 
-        items.append({
-            "id": pid,
-            "name": info.get("name"),
-            "price": price,
-            "price_formatted": f"{price:,}원",
-            "quantity": qty,
-            "subtotal": item_total,
-            "subtotal_formatted": f"{item_total:,}원",
-            "thumbnail_url": info.get("thumbnail_url"),
-            "option": info.get("option", "기본 옵션")
-        })
+            items.append({
+                "cart_id": pid,  # 세션 기반에서는 product_id를 사용
+                "id": pid,
+                "name": info.get("name"),
+                "price": price,
+                "price_formatted": f"{price:,}원",
+                "quantity": qty,
+                "subtotal": item_total,
+                "subtotal_formatted": f"{item_total:,}원",
+                "thumbnail_url": info.get("thumbnail_url"),
+                "option": info.get("option", "기본 옵션")
+            })
 
     shipping_fee = 0 if (total_price >= 30000 or total_price == 0) else 3000
     final_total = total_price + shipping_fee

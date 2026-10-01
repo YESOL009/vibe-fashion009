@@ -40,7 +40,7 @@
                         </thead>
                         <tbody>
                             {% for item in items %}
-                            <tr id="cart-row-{{ item.id }}">
+                            <tr id="cart-row-{{ item.cart_id }}">
                                 <td class="ps-4 py-3">
                                     <div class="d-flex align-items-center gap-3">
                                         <img src="{{ item.thumbnail_url }}" alt="{{ item.name }}" class="rounded-3 shadow-sm object-fit-cover" style="width: 70px; height: 85px;">
@@ -57,16 +57,16 @@
                                 </td>
                                 <td class="text-center py-3">
                                     <div class="input-group input-group-sm justify-content-center" style="max-width: 110px; margin: 0 auto;">
-                                        <button class="btn btn-outline-secondary" type="button" onclick="updateCartQuantity('{{ item.id }}', 'decrease')">-</button>
+                                        <button class="btn btn-outline-secondary" type="button" onclick="updateCartQuantity('{{ item.cart_id }}', 'decrease')">-</button>
                                         <span class="input-group-text bg-white px-3 fw-bold">{{ item.quantity }}</span>
-                                        <button class="btn btn-outline-secondary" type="button" onclick="updateCartQuantity('{{ item.id }}', 'increase')">+</button>
+                                        <button class="btn btn-outline-secondary" type="button" onclick="updateCartQuantity('{{ item.cart_id }}', 'increase')">+</button>
                                     </div>
                                 </td>
                                 <td class="text-end py-3 fw-black fs-6">
                                     {{ item.subtotal_formatted }}
                                 </td>
                                 <td class="text-center py-3 pe-4">
-                                    <button class="btn btn-link text-danger p-0" onclick="removeFromCart('{{ item.id }}')" title="삭제">
+                                    <button class="btn btn-link text-danger p-0" onclick="removeFromCart('{{ item.cart_id }}')" title="삭제">
                                         <i class="bi bi-trash fs-5"></i>
                                     </button>
                                 </td>
