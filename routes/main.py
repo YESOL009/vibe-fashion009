@@ -576,12 +576,17 @@ def cart_update(cart_id):
     price = int(product_res.data.get("price") or 0)
     new_subtotal = price * new_quantity
 
+    # 9. 사용자의 전체 카트 수량 계산
+    user_carts_res = admin_client.table("carts").select("quantity").eq("user_id", user_id).execute()
+    total_cart_count = sum(int(item.get("quantity") or 0) for item in user_carts_res.data or [])
+
     return jsonify({
         "success": True,
         "message": "장바구니 수량이 변경되었습니다",
         "quantity": new_quantity,
         "subtotal": new_subtotal,
-        "subtotal_formatted": f"{new_subtotal:,}원"
+        "subtotal_formatted": f"{new_subtotal:,}원",
+        "cart_count": total_cart_count
     })
 
 

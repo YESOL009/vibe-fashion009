@@ -298,17 +298,58 @@ function toggleWishlistAction(productId, productName, price, thumbnailUrl, btnEl
 /**
  * 장바구니 수량 증감
  */
-function updateCartQuantity(id, action) {
-    fetch('/api/cart/update', {
-        method: 'POST',
+function updateCartQuantity(cartId, action) {
+    // 현재 수량 찾기
+    const cartRow = document.getElementById(`cart-row-${cartId}`);
+    if (!cartRow) return;
+    
+    const quantitySpan = cartRow.querySelector('.input-group-text');
+    if (!quantitySpan) return;
+    
+    let currentQty = parseInt(quantitySpan.textContent.trim(), 10);
+    if (isNaN(currentQty)) currentQty = 1;
+    
+    // 새 수량 계산
+    let newQty = currentQty;
+    if (action === 'increase') {
+        newQty = currentQty + 1;
+    } else if (action === 'decrease') {
+        newQty = Math.max(1, currentQty - 1);
+    }
+    
+    if (newQty === currentQty) return; // 변화 없음
+    
+    // PATCH /cart/<cart_id> 호출
+    fetch(`/cart/${cartId}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: id, action: action })
+        body: JSON.stringify({ quantity: newQty })
     })
     .then(res => res.json())
     .then(data => {
         if (data.success) {
-            location.reload();
+            // 수량 업데이트
+            quantitySpan.textContent = data.quantity;
+            
+            // 소계 업데이트
+            const subtotalCell = cartRow.querySelector('.text-end.fw-black');
+            if (subtotalCell && data.subtotal_formatted) {
+                subtotalCell.textContent = data.subtotal_formatted;
+            }
+            
+            // 배지 업데이트
+            if (typeof updateBadges === 'function' && data.cart_count !== undefined) {
+                updateBadges(data.cart_count);
+            }
+            
+            showToast('수량이 변경되었습니다');
+        } else {
+            showToast(data.error || '수량 변경에 실패했습니다');
         }
+    })
+    .catch(err => {
+        console.error('수량 변경 오류:', err);
+        showToast('수량 변경 중 오류가 발생했습니다');
     });
 }
 
