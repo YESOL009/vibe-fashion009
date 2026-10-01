@@ -403,8 +403,11 @@ function handleAddDetailToCart(productId, productName, price, thumbnailUrl) {
         .then(data => {
             if (!data) return;
             if (data.success) {
-                // 클라이언트 세션 장바구니도 동기화
-                addToCartAction(productId, productName, price, thumbnailUrl, option);
+                // 응답에서 받은 cart_count로 뱃지 업데이트
+                if (typeof updateBadges === 'function' && data.cart_count !== undefined) {
+                    updateBadges(data.cart_count);
+                }
+                
                 if (typeof showToast === 'function') {
                     showToast(`🛒 [${productName}] ${option} (${quantity}개) 장바구니에 담겼습니다!`);
                 } else {
