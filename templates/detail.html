@@ -151,6 +151,7 @@
 
                 <!-- 선택된 옵션 숨김 필드 (장바구니 추가용) -->
                 <input type="hidden" id="selected-option-input" value="{{ product.options[0] if product.options else 'FREE' }}">
+                <input type="hidden" id="selected-option-id-input" value="">
             </div>
 
             <!-- 구매 / 장바구니 버튼 -->
@@ -216,6 +217,9 @@ function onColorChange(color) {
                     const opt = document.createElement('option');
                     opt.value = item.size;
                     opt.dataset.stock = item.stock;
+                    if (item.id) {
+                        opt.dataset.optionId = item.id;
+                    }
 
                     // stock이 0인 항목은 옵션 텍스트에 "(품절)" 표시 + disabled 처리
                     if (item.stock <= 0) {
@@ -252,6 +256,11 @@ function onSizeChange(selectElem) {
     const colorVal = colorSelect ? colorSelect.value : '';
 
     currentSelectedStock = stock;
+
+    // 선택된 product_option_id 및 옵션 텍스트 저장
+    const optionId = selectedOption.dataset.optionId || '';
+    const optionIdInput = document.getElementById('selected-option-id-input');
+    if (optionIdInput) optionIdInput.value = optionId;
 
     // 히든 옵션값 업데이트 (예: "Black / M")
     const fullOption = `${colorVal} / ${sizeVal}`;
@@ -367,10 +376,52 @@ function handleAddDetailToCart(productId, productName, price, thumbnailUrl) {
     const input = document.getElementById('selected-option-input');
     const option = input ? input.value : 'FREE';
 
+    const optionIdInput = document.getElementById('selected-option-id-input');
+    const productOptionId = optionIdInput ? optionIdInput.value : '';
+
     const qtyInput = document.getElementById('quantity-input');
     const quantity = qtyInput ? (parseInt(qtyInput.value, 10) || 1) : 1;
 
-    // 장바구니 추가 API 요청
+    // 1. DB carts 테이블 연동 (POST /cart/add)
+    if (productOptionId) {
+        fetch('/cart/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                product_option_id: productOptionId,
+                quantity: quantity
+            })
+        })
+        .then(res => {
+            if (res.status === 401) {
+                // 로그인 필요 시 리다이렉트
+                window.location.href = '/auth/login';
+                return null;
+            }
+            return res.json();
+        })
+        .then(data => {
+            if (!data) return;
+            if (data.success) {
+                // 클라이언트 세션 장바구니도 동기화
+                addToCartAction(productId, productName, price, thumbnailUrl, option);
+                if (typeof showToast === 'function') {
+                    showToast(`🛒 [${productName}] ${option} (${quantity}개) 장바구니에 담겼습니다!`);
+                } else {
+                    alert(data.message || '장바구니에 담겼습니다');
+                }
+            } else {
+                alert(data.error || '장바구니 담기에 실패했습니다.');
+            }
+        })
+        .catch(err => {
+            console.error('장바구니 추가 실패:', err);
+            alert('장바구니 담기 중 오류가 발생했습니다.');
+        });
+        return;
+    }
+
+    // 2. 단일 옵션 또는 기본 옵션 상품 (하위 호환 세션 장바구니)
     fetch('/api/cart/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
