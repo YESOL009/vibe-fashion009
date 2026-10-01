@@ -123,6 +123,63 @@ function confirmCartDelete() {
 }
 
 /**
+ * 장바구니 전체 비우기 모달 표시
+ */
+function clearCart() {
+    const modalEl = document.getElementById('clearCartModal');
+    if (modalEl) {
+        new bootstrap.Modal(modalEl).show();
+    }
+}
+
+/**
+ * 모달에서 장바구니 전체 삭제 확인
+ */
+function confirmClearCart() {
+    // 삭제 버튼 비활성화
+    const confirmBtn = document.getElementById('confirmClearBtn');
+    const originalText = confirmBtn.textContent;
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = '삭제 중...';
+    
+    fetch('/cart', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            // Modal 닫기
+            const modalEl = document.getElementById('clearCartModal');
+            const modalInstance = bootstrap.Modal.getInstance(modalEl);
+            if (modalInstance) {
+                modalInstance.hide();
+            }
+            
+            // 토스트 메시지 표시
+            showToast('장바구니가 비워졌습니다');
+            
+            // 페이지 새로고침
+            setTimeout(() => {
+                location.reload();
+            }, 500);
+        } else {
+            showToast(data.error || '삭제 중 오류가 발생했습니다');
+            // 버튼 복구
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = originalText;
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        showToast('삭제 중 오류가 발생했습니다');
+        // 버튼 복구
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = originalText;
+    });
+}
+
+/**
  * 상세 페이지 사이즈 옵션 선택 핸들러
  */
 function selectProductOption(optionValue, btnElement) {

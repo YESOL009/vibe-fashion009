@@ -639,6 +639,36 @@ def cart_delete(cart_id):
     })
 
 
+@main_bp.route("/cart", methods=["DELETE"])
+def cart_clear():
+    """
+    [DELETE /cart] 장바구니 전체 비우기 라우트
+    - 로그인한 사용자의 모든 장바구니 아이템 삭제
+    - 성공 시 JSON 응답 반환
+    """
+    # 1. 로그인 여부 확인
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "로그인이 필요한 서비스입니다."}), 401
+
+    admin_client = get_admin_client() or supabase
+    if not admin_client:
+        return jsonify({"success": False, "error": "데이터베이스 연결에 실패했습니다."}), 500
+
+    # 2. 사용자의 모든 카트 항목 삭제
+    try:
+        admin_client.table("carts").delete().eq("user_id", user_id).execute()
+    except Exception as e:
+        print(f"[장바구니 전체 삭제 오류] {e}", file=sys.stderr)
+        return jsonify({"success": False, "error": "장바구니 비우기 중 오류가 발생했습니다."}), 500
+
+    return jsonify({
+        "success": True,
+        "message": "장바구니가 비워졌습니다",
+        "cart_count": 0
+    })
+
+
 @main_bp.route("/cart")
 def cart_page():
     """
