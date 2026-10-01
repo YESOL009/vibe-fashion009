@@ -399,10 +399,17 @@ def forgot_password():
                 options={"redirect_to": redirect_to}
             )
             return redirect(url_for("auth.forgot_password", success="reset_mail_sent"))
+        except AuthApiError as e:
+            print(f"[비밀번호 재설정 메일 AuthApiError] {e}", file=sys.stderr)
+            err_code = (getattr(e, "code", "") or "").lower()
+            err_msg = str(e).lower()
+            if "rate_limit" in err_code or "rate limit" in err_msg or "security purposes" in err_msg or "after" in err_msg:
+                return redirect(url_for("auth.forgot_password", error="rate_limit_exceeded"))
+            return redirect(url_for("auth.forgot_password", error="reset_request_failed"))
         except Exception as e:
             print(f"[비밀번호 재설정 메일 오류] {e}", file=sys.stderr)
             err_msg = str(e).lower()
-            if "rate limit" in err_msg:
+            if "rate limit" in err_msg or "security purposes" in err_msg or "rate_limit" in err_msg:
                 return redirect(url_for("auth.forgot_password", error="rate_limit_exceeded"))
             return redirect(url_for("auth.forgot_password", error="reset_request_failed"))
 

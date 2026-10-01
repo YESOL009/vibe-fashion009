@@ -9,7 +9,7 @@ import traceback
 from flask import Blueprint, render_template, session, jsonify, request, redirect, url_for, flash
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from app.routes.auth import login_required
+from app.routes.auth import login_required, get_supabase_client
 
 # .env 파일에서 환경변수 로드
 load_dotenv()
@@ -761,6 +761,37 @@ def mypage():
         flash("회원 정보가 성공적으로 수정되었습니다.", "success")
         return redirect(url_for("main.mypage"))
 
+    # 이메일/비밀번호 가입 사용자 여부 판별 (소셜 로그인 사용자는 비밀번호 변경 불가)
+    is_email_user = False
+    social_providers = {"kakao", "azure", "microsoft", "google", "naver", "github", "facebook"}
+
+    if auth_user:
+        app_meta = getattr(auth_user, "app_metadata", {}) or {}
+        user_meta = getattr(auth_user, "user_metadata", {}) or {}
+        providers = app_meta.get("providers") or []
+        primary_provider = app_meta.get("provider")
+        identities = getattr(auth_user, "identities", []) or []
+        identity_providers = [
+            getattr(ident, "provider", None) if hasattr(ident, "provider") else (ident.get("provider") if isinstance(ident, dict) else None)
+            for ident in identities
+        ]
+        has_social = bool(
+            (set(providers) & social_providers)
+            or (primary_provider in social_providers)
+            or (set(identity_providers) & social_providers)
+            or (user_meta.get("provider") in social_providers)
+            or (user_meta.get("iss") or "").startswith("https://kapi.kakao.com")
+        )
+        if not has_social and ("email" in providers or primary_provider == "email" or "email" in identity_providers):
+            is_email_user = True
+    else:
+        has_social_session = bool(
+            session.get("kakao_user_id")
+            or session.get("provider_token")
+            or session.get("provider") in social_providers
+        )
+        is_email_user = not has_social_session
+
     # 템플릿 전달용 프로필 뷰 객체 구성
     profile_view = {
         "id": user_id,
@@ -771,15 +802,139 @@ def mypage():
         "address_detail": address_detail,
         "grade": profile_data.get("grade", "BRONZE"),
         "points": profile_data.get("points", 1000),
-        "total_spent": profile_data.get("total_spent", 0)
+        "total_spent": profile_data.get("total_spent", 0),
+        "is_email_user": is_email_user
     }
 
     return render_template(
         "mypage.html",
         brand_name="VIBE-FASHION",
         profile=profile_view,
-        user=session_user
+        user=session_user,
+        is_email_user=is_email_user
     )
+
+
+@main_bp.route("/mypage/change-password", methods=["POST"])
+@login_required
+def change_password():
+    """
+    [POST /mypage/change-password] 마이페이지 내 비밀번호 변경 처리
+    - 기존 비밀번호 검증 (Supabase 재로그인 확인)
+    - 새 비밀번호 검증 (Day 4 규칙: 일치 여부, 6자 이상, 기존 비밀번호와 불일치)
+    - Supabase update_user_by_id()를 통한 비밀번호 갱신
+    """
+    user_id = session.get("user_id")
+    admin_client = get_admin_client() or supabase
+
+    if not user_id or not admin_client:
+        flash("로그인이 필요한 서비스입니다.", "error")
+        return redirect(url_for("auth.login"))
+
+    # 사용자 Auth 정보 조회
+    auth_user = None
+    try:
+        user_resp = admin_client.auth.admin.get_user_by_id(user_id)
+        if user_resp and user_resp.user:
+            auth_user = user_resp.user
+    except Exception as e:
+        print(f"[비밀번호 변경 Auth 조회 오류] {e}", file=sys.stderr)
+
+    # 소셜 로그인 가입자 여부 검증 (소셜 회원은 비밀번호가 없음)
+    is_email_user = False
+    social_providers = {"kakao", "azure", "microsoft", "google", "naver", "github", "facebook"}
+
+    if auth_user:
+        app_meta = getattr(auth_user, "app_metadata", {}) or {}
+        user_meta = getattr(auth_user, "user_metadata", {}) or {}
+        providers = app_meta.get("providers") or []
+        primary_provider = app_meta.get("provider")
+        identities = getattr(auth_user, "identities", []) or []
+        identity_providers = [
+            getattr(ident, "provider", None) if hasattr(ident, "provider") else (ident.get("provider") if isinstance(ident, dict) else None)
+            for ident in identities
+        ]
+        has_social = bool(
+            (set(providers) & social_providers)
+            or (primary_provider in social_providers)
+            or (set(identity_providers) & social_providers)
+            or (user_meta.get("provider") in social_providers)
+            or (user_meta.get("iss") or "").startswith("https://kapi.kakao.com")
+        )
+        if not has_social and ("email" in providers or primary_provider == "email" or "email" in identity_providers):
+            is_email_user = True
+    else:
+        has_social_session = bool(
+            session.get("kakao_user_id")
+            or session.get("provider_token")
+            or session.get("provider") in social_providers
+        )
+        is_email_user = not has_social_session
+
+    if not is_email_user:
+        flash("소셜 로그인으로 가입된 계정은 비밀번호를 변경할 수 없습니다.", "error")
+        return redirect(url_for("main.mypage"))
+
+    # 사용자 이메일 확보
+    email = (
+        getattr(auth_user, "email", None)
+        or (session.get("user") or {}).get("email")
+    )
+    if not email:
+        flash("사용자 계정 정보를 찾을 수 없습니다.", "error")
+        return redirect(url_for("main.mypage"))
+
+    current_password = request.form.get("current_password") or ""
+    new_password = request.form.get("new_password") or ""
+    new_password_confirm = request.form.get("new_password_confirm") or ""
+
+    # 필수값 검증
+    if not current_password or not new_password or not new_password_confirm:
+        flash("모든 항목을 입력해주세요.", "error")
+        return redirect(url_for("main.mypage"))
+
+    # 새 비밀번호와 기존 비밀번호 동일 검증
+    if current_password == new_password:
+        flash("새로운 비밀번호가 현재 비밀번호와 동일합니다", "error")
+        return redirect(url_for("main.mypage"))
+
+    # Day 4 새 비밀번호 검증 조건: 불일치 체크 & 6자 이상
+    if new_password != new_password_confirm:
+        flash("비밀번호가 일치하지 않습니다.", "error")
+        return redirect(url_for("main.mypage"))
+
+    if len(new_password) < 6:
+        flash("비밀번호는 최소 6자 이상이어야 합니다.", "error")
+        return redirect(url_for("main.mypage"))
+
+    # 기존 비밀번호 검증 (재로그인 방식으로 확인)
+    try:
+        verify_client = get_supabase_client()
+        sign_in_res = verify_client.auth.sign_in_with_password({
+            "email": email,
+            "password": current_password
+        })
+        if not sign_in_res or not sign_in_res.user:
+            flash("현재 비밀번호가 일치하지 않습니다", "error")
+            return redirect(url_for("main.mypage"))
+    except Exception as e:
+        print(f"[현재 비밀번호 불일치/검증 오류] {e}", file=sys.stderr)
+        flash("현재 비밀번호가 일치하지 않습니다", "error")
+        return redirect(url_for("main.mypage"))
+
+    # Supabase update_user_by_id()를 통한 비밀번호 변경
+    try:
+        admin_client.auth.admin.update_user_by_id(
+            user_id,
+            {"password": new_password}
+        )
+    except Exception as e:
+        print(f"[Supabase update_user_by_id 오류] {e}", file=sys.stderr)
+        flash("비밀번호 변경 처리 중 오류가 발생했습니다.", "error")
+        return redirect(url_for("main.mypage"))
+
+    flash("비밀번호가 변경되었습니다", "success")
+    return redirect(url_for("main.mypage"))
 
 
 @main_bp.route("/register", methods=["GET", "POST"])
