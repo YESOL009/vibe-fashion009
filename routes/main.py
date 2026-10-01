@@ -643,7 +643,7 @@ def cart_delete(cart_id):
 def cart_page():
     """
     장바구니 페이지 라우트
-    - DB 기반 carts 테이블 (로그인 사용자)
+    - DB 기반 carts 테이블 (로그인 사용자만)
     - 세션 기반 cart (비로그인 사용자)
     """
     user_id = session.get("user_id")
@@ -651,7 +651,7 @@ def cart_page():
     total_price = 0
 
     if user_id:
-        # 로그인된 사용자: DB carts 테이블에서 조회
+        # 로그인된 사용자: DB carts 테이블에서 조회 (세션 폴백 없음)
         admin_client = get_admin_client() or supabase
         if admin_client:
             try:
@@ -721,9 +721,9 @@ def cart_page():
                     })
             except Exception as e:
                 print(f"[cart_page DB 조회 오류] {e}", file=sys.stderr)
-    
-    # 로그인하지 않았거나 DB 조회 실패 시 세션 사용
-    if not items:
+                # 로그인 사용자는 session 폴백을 사용하지 않음
+    else:
+        # 비로그인: 세션 cart만 사용
         cart = _get_cart()
         for pid, info in cart.items():
             qty = int(info.get("quantity", 1))
@@ -1080,10 +1080,33 @@ def api_wishlist_toggle():
 @main_bp.route("/api/counts")
 def api_counts():
     """현재 장바구니 및 관심 상품 카운트 반환"""
-    cart = _get_cart()
+    user_id = session.get("user_id")
+    
+    # 로그인된 사용자: DB carts 테이블에서 조회
+    if user_id:
+        admin_client = get_admin_client() or supabase
+        if admin_client:
+            try:
+                cart_res = (
+                    admin_client.table("carts")
+                    .select("quantity")
+                    .eq("user_id", user_id)
+                    .execute()
+                )
+                cart_count = sum(int(item.get("quantity", 0)) for item in (cart_res.data or []))
+            except Exception as e:
+                print(f"[api_counts DB 조회 오류] {e}", file=sys.stderr)
+                cart_count = 0
+        else:
+            cart_count = 0
+    else:
+        # 비로그인: 세션 cart 사용
+        cart = _get_cart()
+        cart_count = sum(item.get("quantity", 1) for item in cart.values())
+    
     wishlist = _get_wishlist()
     return jsonify({
-        "cart_count": sum(item.get("quantity", 1) for item in cart.values()),
+        "cart_count": cart_count,
         "wishlist_count": len(wishlist)
     })
 
