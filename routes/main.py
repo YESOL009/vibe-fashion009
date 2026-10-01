@@ -704,10 +704,10 @@ def cart_page():
                     option_id = cart_item.get("option_id")
                     qty = int(cart_item.get("quantity", 1))
                     
-                    # 상품 정보 조회 (name, price만)
+                    # 상품 정보 조회 (name, price, product_images)
                     product_res = (
                         admin_client.table("products")
-                        .select("name, price")
+                        .select("name, price, product_images(*)")
                         .eq("id", product_id)
                         .maybe_single()
                         .execute()
@@ -722,8 +722,18 @@ def cart_page():
                     item_total = price * qty
                     total_price += item_total
                     
-                    # 이미지 URL 처리
-                    thumbnail_url = LOCAL_IMAGE_MAP.get(prod_name) or f"https://picsum.photos/seed/vibe_{product_id}/600/750"
+                    # 이미지 URL 처리: 로컬 매핑 우선 -> product_images 테이블 연동 -> picsum fallback
+                    thumbnail_url = LOCAL_IMAGE_MAP.get(prod_name)
+                    if not thumbnail_url:
+                        images = product.get("product_images") or []
+                        for img in sorted(images, key=lambda x: x.get("sort_order", 0)):
+                            if img.get("is_thumbnail"):
+                                thumbnail_url = img.get("image_url")
+                                break
+                        if not thumbnail_url and images:
+                            thumbnail_url = images[0].get("image_url")
+                    if not thumbnail_url:
+                        thumbnail_url = f"https://picsum.photos/seed/vibe_{product_id}/600/750"
                     
                     # 옵션 정보 조회 (색상/사이즈 등)
                     option_res = (
@@ -849,31 +859,104 @@ def checkout_page():
     """
     주문/결제 화면
     """
-    cart = _get_cart()
-    if not cart:
-        flash("장바구니가 비어 있습니다. 상품을 먼저 담아주세요.", "info")
-        return redirect(url_for("main.cart_page"))
-
+    user_id = session.get("user_id")
     items = []
     total_price = 0
 
-    for pid, info in cart.items():
-        qty = int(info.get("quantity", 1))
-        price = int(info.get("price", 0))
-        item_total = price * qty
-        total_price += item_total
+    if user_id:
+        admin_client = get_admin_client() or supabase
+        if admin_client:
+            try:
+                cart_res = (
+                    admin_client.table("carts")
+                    .select("id, product_id, option_id, quantity")
+                    .eq("user_id", user_id)
+                    .execute()
+                )
+                for cart_item in (cart_res.data or []):
+                    cart_id = cart_item.get("id")
+                    product_id = cart_item.get("product_id")
+                    option_id = cart_item.get("option_id")
+                    qty = int(cart_item.get("quantity", 1))
 
-        items.append({
-            "id": pid,
-            "name": info.get("name"),
-            "price": price,
-            "price_formatted": f"{price:,}원",
-            "quantity": qty,
-            "subtotal": item_total,
-            "subtotal_formatted": f"{item_total:,}원",
-            "thumbnail_url": info.get("thumbnail_url"),
-            "option": info.get("option", "기본 옵션")
-        })
+                    product_res = (
+                        admin_client.table("products")
+                        .select("name, price, product_images(*)")
+                        .eq("id", product_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    if not product_res or not product_res.data:
+                        continue
+
+                    product = product_res.data
+                    prod_name = product.get("name")
+                    price = int(product.get("price", 0))
+                    item_total = price * qty
+                    total_price += item_total
+
+                    thumbnail_url = LOCAL_IMAGE_MAP.get(prod_name)
+                    if not thumbnail_url:
+                        images = product.get("product_images") or []
+                        for img in sorted(images, key=lambda x: x.get("sort_order", 0)):
+                            if img.get("is_thumbnail"):
+                                thumbnail_url = img.get("image_url")
+                                break
+                        if not thumbnail_url and images:
+                            thumbnail_url = images[0].get("image_url")
+                    if not thumbnail_url:
+                        thumbnail_url = f"https://picsum.photos/seed/vibe_{product_id}/600/750"
+
+                    option_res = (
+                        admin_client.table("product_options")
+                        .select("color, size")
+                        .eq("id", option_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    color = "기본"
+                    size = "기본"
+                    if option_res and option_res.data:
+                        color = option_res.data.get("color", "기본")
+                        size = option_res.data.get("size", "기본")
+
+                    items.append({
+                        "id": product_id,
+                        "name": prod_name,
+                        "price": price,
+                        "price_formatted": f"{price:,}원",
+                        "quantity": qty,
+                        "subtotal": item_total,
+                        "subtotal_formatted": f"{item_total:,}원",
+                        "thumbnail_url": thumbnail_url,
+                        "option": f"{color}/{size}"
+                    })
+            except Exception as e:
+                print(f"[checkout_page DB 조회 오류] {e}", file=sys.stderr)
+
+    if not items:
+        cart = _get_cart()
+        for pid, info in cart.items():
+            qty = int(info.get("quantity", 1))
+            price = int(info.get("price", 0))
+            item_total = price * qty
+            total_price += item_total
+
+            items.append({
+                "id": pid,
+                "name": info.get("name"),
+                "price": price,
+                "price_formatted": f"{price:,}원",
+                "quantity": qty,
+                "subtotal": item_total,
+                "subtotal_formatted": f"{item_total:,}원",
+                "thumbnail_url": info.get("thumbnail_url"),
+                "option": info.get("option", "기본 옵션")
+            })
+
+    if not items:
+        flash("장바구니가 비어 있습니다. 상품을 먼저 담아주세요.", "info")
+        return redirect(url_for("main.cart_page"))
 
     shipping_fee = 0 if (total_price >= 30000 or total_price == 0) else 3000
     final_total = total_price + shipping_fee
