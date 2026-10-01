@@ -48,54 +48,79 @@ document.addEventListener('DOMContentLoaded', () => {
             updateBadges(data.cart_count, data.wishlist_count);
         })
         .catch(() => {});
-    
-    // 장바구니 삭제 모달의 "삭제" 버튼 클릭 이벤트
-    const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
-    if (confirmDeleteBtn) {
-        confirmDeleteBtn.addEventListener('click', () => {
-            const cartId = window.pendingCartDeleteId;
-            if (!cartId) return;
-            
-            fetch(`/cart/${cartId}`, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' }
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    // Modal 닫기
-                    const modalEl = document.getElementById('deleteCartModal');
-                    if (modalEl) {
-                        const modalInstance = bootstrap.Modal.getInstance(modalEl);
-                        if (modalInstance) modalInstance.hide();
-                    }
-                    
-                    // 해당 row 제거
-                    const cartRow = document.getElementById(`cart-row-${cartId}`);
-                    if (cartRow) {
-                        cartRow.remove();
-                    }
-                    
-                    // 토스트 메시지 표시
-                    showToast('상품이 장바구니에서 삭제되었습니다');
-                    
-                    // 장바구니가 비었는지 확인
-                    const tableBody = document.querySelector('table tbody');
-                    if (!tableBody || tableBody.querySelectorAll('tr').length === 0) {
-                        // 페이지 새로고침 (빈 상태 UI로 변경)
-                        setTimeout(() => location.reload(), 1000);
-                    }
-                } else {
-                    showToast(data.error || '삭제 중 오류가 발생했습니다');
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                showToast('삭제 중 오류가 발생했습니다');
-            });
-        });
-    }
 });
+
+/**
+ * 장바구니 항목 삭제 (모달 표시)
+ */
+function removeFromCart(cartId) {
+    window.pendingCartDeleteId = cartId;
+    const deleteModal = new bootstrap.Modal(document.getElementById('deleteCartModal'));
+    deleteModal.show();
+}
+
+/**
+ * 모달에서 삭제 확인 버튼 클릭
+ */
+function confirmCartDelete() {
+    const cartId = window.pendingCartDeleteId;
+    if (!cartId) return;
+    
+    // 삭제 버튼 비활성화
+    const confirmBtn = document.getElementById('confirmDeleteBtn');
+    const originalText = confirmBtn.textContent;
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = '삭제 중...';
+    
+    fetch(`/cart/${cartId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            // Modal 닫기
+            const modalEl = document.getElementById('deleteCartModal');
+            const modalInstance = bootstrap.Modal.getInstance(modalEl);
+            if (modalInstance) {
+                modalInstance.hide();
+            }
+            
+            // 해당 row 제거
+            const cartRow = document.getElementById(`cart-row-${cartId}`);
+            if (cartRow) {
+                // fade out 효과
+                cartRow.style.opacity = '0';
+                cartRow.style.transition = 'opacity 0.3s';
+                setTimeout(() => cartRow.remove(), 300);
+            }
+            
+            // 토스트 메시지 표시
+            showToast('상품이 장바구니에서 삭제되었습니다');
+            
+            // 장바구니가 비었는지 확인
+            setTimeout(() => {
+                const tableBody = document.querySelector('table tbody');
+                if (!tableBody || tableBody.querySelectorAll('tr').length === 0) {
+                    // 페이지 새로고침 (빈 상태 UI로 변경)
+                    location.reload();
+                }
+            }, 500);
+        } else {
+            showToast(data.error || '삭제 중 오류가 발생했습니다');
+            // 버튼 복구
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = originalText;
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        showToast('삭제 중 오류가 발생했습니다');
+        // 버튼 복구
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = originalText;
+    });
+}
 
 /**
  * 상세 페이지 사이즈 옵션 선택 핸들러
