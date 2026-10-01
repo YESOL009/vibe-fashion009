@@ -461,6 +461,130 @@ def cart_add():
     })
 
 
+@main_bp.route("/cart/<cart_id>", methods=["PATCH"])
+def cart_update(cart_id):
+    """
+    [PATCH /cart/<cart_id>] 장바구니 수량 변경 라우트
+    - 요청 body: quantity (변경할 새 수량)
+    - 본인 소유의 장바구니 아이템인지 확인 (다른 사용자의 cart_id 접근 차단)
+    - quantity가 1 미만이면 에러
+    - 변경하려는 quantity가 해당 옵션의 stock을 초과하면
+      "재고가 부족합니다(현재 N개)" 에러, 변경하지 않음
+    - 성공 시 UPDATE 후 새 소계(subtotal) 반환
+    """
+    # 1. 로그인 여부 확인
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "로그인이 필요한 서비스입니다."}), 401
+
+    # 2. 요청 파라미터 파싱
+    data = request.get_json(silent=True) or request.form.to_dict()
+    try:
+        new_quantity = int(data.get("quantity", 1))
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "수량은 정수여야 합니다."}), 400
+
+    if new_quantity < 1:
+        return jsonify({"success": False, "error": "수량은 1개 이상이어야 합니다."}), 400
+
+    admin_client = get_admin_client() or supabase
+    if not admin_client:
+        return jsonify({"success": False, "error": "데이터베이스 연결에 실패했습니다."}), 500
+
+    # 3. carts 테이블에서 해당 cart_id 조회
+    try:
+        cart_res = (
+            admin_client.table("carts")
+            .select("id, user_id, option_id, product_id, quantity")
+            .eq("id", cart_id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as e:
+        print(f"[장바구니 항목 조회 오류] {e}", file=sys.stderr)
+        return jsonify({"success": False, "error": "장바구니 항목을 조회할 수 없습니다."}), 500
+
+    if not cart_res or not cart_res.data:
+        return jsonify({"success": False, "error": "해당 장바구니 항목을 찾을 수 없습니다."}), 404
+
+    cart_item = cart_res.data
+    cart_user_id = cart_item.get("user_id")
+    option_id = cart_item.get("option_id")
+    product_id = cart_item.get("product_id")
+
+    # 4. 본인 소유 확인
+    if str(cart_user_id) != str(user_id):
+        return jsonify({"success": False, "error": "다른 사용자의 장바구니에 접근할 수 없습니다."}), 403
+
+    # 5. product_options에서 stock 조회
+    if not option_id:
+        return jsonify({"success": False, "error": "장바구니 항목의 옵션 정보가 없습니다."}), 400
+
+    try:
+        opt_res = (
+            admin_client.table("product_options")
+            .select("stock, stock_quantity")
+            .eq("id", option_id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as e:
+        print(f"[상품 옵션 재고 조회 오류] {e}", file=sys.stderr)
+        return jsonify({"success": False, "error": "상품 옵션 정보를 조회할 수 없습니다."}), 500
+
+    if not opt_res or not opt_res.data:
+        return jsonify({"success": False, "error": "상품 옵션을 찾을 수 없습니다."}), 404
+
+    option_data = opt_res.data
+    stock_val = option_data.get("stock") if option_data.get("stock") is not None else option_data.get("stock_quantity", 0)
+    current_stock = int(stock_val or 0)
+
+    # 6. 변경하려는 수량이 재고를 초과하는 경우 에러
+    if new_quantity > current_stock:
+        return jsonify({
+            "success": False,
+            "error": f"재고가 부족합니다(현재 {current_stock}개)"
+        }), 400
+
+    # 7. carts 테이블 UPDATE
+    import datetime
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    try:
+        admin_client.table("carts").update(
+            {"quantity": new_quantity, "updated_at": now_iso}
+        ).eq("id", cart_id).execute()
+    except Exception as e:
+        print(f"[carts 테이블 업데이트 오류] {e}", file=sys.stderr)
+        return jsonify({"success": False, "error": "장바구니 수량 변경 중 오류가 발생했습니다."}), 500
+
+    # 8. 상품 가격 조회하여 새 소계 계산
+    try:
+        product_res = (
+            admin_client.table("products")
+            .select("price")
+            .eq("id", product_id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as e:
+        print(f"[상품 가격 조회 오류] {e}", file=sys.stderr)
+        return jsonify({"success": False, "error": "상품 가격을 조회할 수 없습니다."}), 500
+
+    if not product_res or not product_res.data:
+        return jsonify({"success": False, "error": "상품을 찾을 수 없습니다."}), 404
+
+    price = int(product_res.data.get("price") or 0)
+    new_subtotal = price * new_quantity
+
+    return jsonify({
+        "success": True,
+        "message": "장바구니 수량이 변경되었습니다",
+        "quantity": new_quantity,
+        "subtotal": new_subtotal,
+        "subtotal_formatted": f"{new_subtotal:,}원"
+    })
+
+
 @main_bp.route("/cart")
 def cart_page():
     """
