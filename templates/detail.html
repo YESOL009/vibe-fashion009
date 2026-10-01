@@ -184,7 +184,9 @@ let currentSelectedStock = 10; // 기본 수량 상한
 
 /**
  * [1] 색상 선택 이벤트 핸들러
- * - 선택된 색상에 해당하는 사이즈 목록을 fetch API로 조회하여 사이즈 드롭다운 갱신
+ * - GET /api/products/<product_id>/sizes?color=<선택한 색상> API를 fetch로 호출
+ * - size, stock JSON 배열([{"size": "S", "stock": 3}, ...])을 수신하여 사이즈 드롭다운 동적 구성
+ * - stock이 0인 항목은 옵션 텍스트에 "(품절)" 표시 + disabled 처리
  */
 function onColorChange(color) {
     if (!color) return;
@@ -206,15 +208,17 @@ function onColorChange(color) {
     fetch(`/api/products/${currentProductId}/sizes?color=${encodeURIComponent(color)}`)
         .then(res => res.json())
         .then(data => {
-            if (data.success && Array.isArray(data.sizes) && data.sizes.length > 0) {
+            // JSON 배열 직접 수신 또는 하위 호환 객체 유연 처리
+            const sizes = Array.isArray(data) ? data : (data.sizes || []);
+            if (sizes.length > 0) {
                 sizeSelect.innerHTML = '<option value="" selected disabled>-- 사이즈를 선택해주세요 --</option>';
-                data.sizes.forEach(item => {
+                sizes.forEach(item => {
                     const opt = document.createElement('option');
                     opt.value = item.size;
                     opt.dataset.stock = item.stock;
-                    opt.dataset.optionId = item.option_id;
 
-                    if (item.is_sold_out || item.stock <= 0) {
+                    // stock이 0인 항목은 옵션 텍스트에 "(품절)" 표시 + disabled 처리
+                    if (item.stock <= 0) {
                         opt.textContent = `${item.size} (품절)`;
                         opt.disabled = true;
                         opt.classList.add('text-muted');

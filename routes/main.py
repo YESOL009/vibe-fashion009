@@ -281,39 +281,46 @@ def product_detail(product_id):
 @main_bp.route("/api/products/<product_id>/sizes")
 def api_product_sizes(product_id):
     """
-    상품 색상별 사이즈 및 재고 조회 API (GET /api/products/<product_id>/sizes?color=<color>)
-    - 선택된 색상의 사이즈 목록과 재고(stock) 반환
+    상품 색상별 사이즈 및 재고 조회 API
+    GET /api/products/<product_id>/sizes?color=<선택한 색상>
+    - product_options 테이블에서 product_id + color로 필터링
+    - size, stock을 JSON 배열로 반환
+      예: [{"size": "S", "stock": 3}, {"size": "M", "stock": 0}]
     """
     selected_color = request.args.get("color", "").strip()
     if not supabase or not product_id or not selected_color:
-        return jsonify({"success": False, "sizes": []})
+        return jsonify([])
 
     try:
-        # product_options 테이블에서 해당 상품 및 색상의 옵션 목록 조회
+        # product_options 테이블에서 product_id 및 color로 필터링
         res = (
             supabase.table("product_options")
-            .select("id, size, stock, stock_quantity, option_value")
+            .select("size, stock, stock_quantity, option_value")
             .eq("product_id", product_id)
-            .eq("color", selected_color)
-            .order("id")
+            .ilike("color", selected_color)
             .execute()
         )
         options = res.data or []
+
+        # 사이즈 표기 기본 정렬 (XS -> S -> M -> L -> XL -> XXL -> 기타)
+        size_priority = {"XS": 1, "S": 2, "M": 3, "L": 4, "XL": 5, "XXL": 6, "FREE": 99}
+        options.sort(key=lambda o: size_priority.get(str(o.get("size") or "").upper(), 50))
+
         sizes = []
         for opt in options:
             size_val = opt.get("size") or opt.get("option_value") or "FREE"
-            # stock 우선, 없으면 stock_quantity 사용
+            # stock 컬럼 우선 참조, 없으면 stock_quantity 호환 적용
             stock_val = opt.get("stock") if opt.get("stock") is not None else opt.get("stock_quantity", 0)
             sizes.append({
-                "option_id": opt.get("id"),
                 "size": size_val,
-                "stock": int(stock_val or 0),
-                "is_sold_out": int(stock_val or 0) <= 0
+                "stock": int(stock_val or 0)
             })
-        return jsonify({"success": True, "sizes": sizes})
+
+        # size, stock 형태의 JSON 배열 반환
+        return jsonify(sizes)
     except Exception as e:
         print(f"[색상별 사이즈 조회 오류] {e}", file=sys.stderr)
-        return jsonify({"success": False, "error": str(e), "sizes": []}), 500
+        return jsonify([]), 500
 
 
 def _get_cart():
