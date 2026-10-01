@@ -325,23 +325,6 @@ function removeFromCart(cartId) {
 }
 
 /**
- * 장바구니 전체 비우기
- */
-function clearCart() {
-    if (!confirm('장바구니를 모두 비우시겠습니까?')) return;
-    fetch('/api/cart/clear', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        }
-    });
-}
-
-/**
  * 위시리스트 페이지에서 장바구니 담고 바로 이동/안내
  */
 function addCartAndRefresh(productId, productName, price, thumbnailUrl) {
