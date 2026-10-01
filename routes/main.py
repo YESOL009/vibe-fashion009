@@ -9,6 +9,7 @@ import traceback
 from flask import Blueprint, render_template, session, jsonify, request, redirect, url_for, flash
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from app.routes.auth import login_required
 
 # .env 파일에서 환경변수 로드
 load_dotenv()
@@ -27,6 +28,19 @@ if SUPABASE_URL and SUPABASE_ANON_KEY:
 
 # 'main'이라는 이름의 블루프린트를 생성합니다.
 main_bp = Blueprint("main", __name__)
+
+# Supabase Service Key 관리자 클라이언트 헬퍼
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
+
+def get_admin_client() -> Client | None:
+    """Supabase 서비스 키 관리자 클라이언트 반환 (profiles 등 서비스 전용 작업용)"""
+    if SUPABASE_URL and (SUPABASE_SERVICE_KEY or SUPABASE_ANON_KEY):
+        try:
+            return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY or SUPABASE_ANON_KEY)
+        except Exception as e:
+            print(f"[Supabase Admin 클라이언트 오류] {e}", file=sys.stderr)
+    return None
 
 # 특정 상품 정적 이미지 우선 매핑
 LOCAL_IMAGE_MAP = {
@@ -637,18 +651,134 @@ def api_counts():
 # 사용자 마이페이지 및 기존 라우트 호환
 # -----------------------------------------------------------------------------
 
-@main_bp.route("/mypage")
+@main_bp.route("/mypage", methods=["GET", "POST"])
+@login_required
 def mypage():
-    """마이페이지 - 인증된 회원 정보 조회"""
+    """마이페이지 - 인증된 회원 정보 조회 및 수정 뼈대"""
     user_id = session.get("user_id")
-    if not user_id:
-        return redirect(url_for("auth.login", error="login_required"))
 
-    user = session.get("user")
+    admin_client = get_admin_client() or supabase
+    profile_data = {}
+    auth_user = None
+
+    # Supabase Auth 사용자 정보 조회
+    if admin_client:
+        try:
+            user_resp = admin_client.auth.admin.get_user_by_id(user_id)
+            if user_resp and user_resp.user:
+                auth_user = user_resp.user
+        except Exception as e:
+            print(f"[마이페이지 Auth 조회 알림] {e}", file=sys.stderr)
+
+    # Supabase profiles 테이블에서 회원 정보 조회
+    if admin_client:
+        try:
+            res = admin_client.table("profiles").select("*").eq("id", user_id).maybe_single().execute()
+            if res and res.data:
+                profile_data = res.data
+        except Exception as e:
+            print(f"[마이페이지 profiles 조회 오류] {e}", file=sys.stderr)
+
+    # profiles 행이 없거나 기본 필드가 비어있을 경우 세션/Auth 메타데이터로 보완
+    session_user = session.get("user") or {}
+    user_meta = getattr(auth_user, "user_metadata", {}) or {}
+
+    email = (
+        profile_data.get("email")
+        or getattr(auth_user, "email", None)
+        or session_user.get("email", "")
+    )
+    full_name = (
+        profile_data.get("full_name")
+        or user_meta.get("full_name")
+        or user_meta.get("name")
+        or session_user.get("name")
+        or (email.split("@")[0] if email else "회원")
+    )
+    phone = (
+        profile_data.get("phone")
+        or user_meta.get("phone")
+        or ""
+    )
+    # 기본 배송지 (profiles 컬럼 또는 user_metadata에 저장된 값)
+    address = (
+        profile_data.get("address")
+        or profile_data.get("shipping_address")
+        or user_meta.get("address")
+        or ""
+    )
+    address_detail = (
+        profile_data.get("address_detail")
+        or profile_data.get("shipping_address_detail")
+        or user_meta.get("address_detail")
+        or ""
+    )
+
+    # POST 요청: 회원 정보 (이름, 전화번호, 기본 배송지) 수정 처리
+    if request.method == "POST":
+        new_name = (request.form.get("full_name") or "").strip()
+        new_phone = (request.form.get("phone") or "").strip()
+        new_address = (request.form.get("address") or "").strip()
+        new_address_detail = (request.form.get("address_detail") or "").strip()
+
+        if not new_name:
+            flash("이름을 입력해주세요.", "error")
+            return redirect(url_for("main.mypage"))
+
+        # 1. profiles 테이블 갱신 시도
+        profile_update = {
+            "full_name": new_name,
+            "phone": new_phone
+        }
+        # address 컬럼 존재 여부 체크 후 동적 반영
+        if "address" in profile_data:
+            profile_update["address"] = new_address
+        if "address_detail" in profile_data:
+            profile_update["address_detail"] = new_address_detail
+
+        if admin_client:
+            try:
+                admin_client.table("profiles").upsert({
+                    "id": user_id,
+                    "email": email,
+                    **profile_update
+                }).execute()
+            except Exception as e:
+                print(f"[profiles 테이블 업데이트 오류] {e}", file=sys.stderr)
+
+            # 2. Auth user_metadata에도 배송지 및 이름 동기화 (스키마 컬럼 독립성 보장)
+            try:
+                updated_meta = {**user_meta, "full_name": new_name, "phone": new_phone, "address": new_address, "address_detail": new_address_detail}
+                admin_client.auth.admin.update_user_by_id(user_id, {"user_metadata": updated_meta})
+            except Exception as e:
+                print(f"[Auth user_metadata 업데이트 오류] {e}", file=sys.stderr)
+
+        # 3. Flask 세션 정보 동기화
+        if "user" in session and isinstance(session["user"], dict):
+            session["user"]["name"] = new_name
+            session.modified = True
+
+        flash("회원 정보가 성공적으로 수정되었습니다.", "success")
+        return redirect(url_for("main.mypage"))
+
+    # 템플릿 전달용 프로필 뷰 객체 구성
+    profile_view = {
+        "id": user_id,
+        "email": email,
+        "full_name": full_name,
+        "phone": phone,
+        "address": address,
+        "address_detail": address_detail,
+        "grade": profile_data.get("grade", "BRONZE"),
+        "points": profile_data.get("points", 1000),
+        "total_spent": profile_data.get("total_spent", 0)
+    }
+
     return render_template(
         "mypage.html",
         brand_name="VIBE-FASHION",
-        user=user
+        profile=profile_view,
+        user=session_user
     )
 
 

@@ -550,81 +550,36 @@ def withdraw():
     kakao_identity = next((ident for ident in identities if ident.provider == "kakao"), None)
 
     # 1-3. 카카오 연동 해제 (Unlink)
-    # 카카오 회원번호 파악: session 캐시 -> identities -> user_metadata
+    # 카카오 회원번호 파악: session 캐시 -> kakao_identity.id -> user_metadata -> identities 목록
     kakao_target_id = session.get("kakao_user_id")
+    if not kakao_target_id and kakao_identity:
+        kakao_target_id = getattr(kakao_identity, "id", None) or getattr(kakao_identity, "identity_data", {}).get("sub") or getattr(kakao_identity, "identity_data", {}).get("id")
     if not kakao_target_id and user_obj:
-        for ident in getattr(user_obj, "identities", []) or []:
-            if getattr(ident, "provider", None) == "kakao":
-                idata = getattr(ident, "identity_data", {}) or {}
-                for k in ("sub", "id", "provider_id"):
-                    v = idata.get(k)
-                    if v and str(v).isdigit():
-                        kakao_target_id = str(v)
-                        break
-                if not kakao_target_id and getattr(ident, "id", None) and str(ident.id).isdigit():
-                    kakao_target_id = str(ident.id)
-                if kakao_target_id:
-                    break
-        if not kakao_target_id:
-            umeta = getattr(user_obj, "user_metadata", {}) or {}
-            for k in ("sub", "provider_id", "id"):
-                v = umeta.get(k)
-                if v and str(v).isdigit():
-                    kakao_target_id = str(v)
-                    break
+        if (user_obj.app_metadata or {}).get("provider") == "kakao" and (user_obj.user_metadata or {}).get("sub"):
+            kakao_target_id = user_obj.user_metadata["sub"]
 
     kakao_unlinked = False
+    # 방식 A: KAKAO_ADMIN_KEY가 설정되어 있고 target_id를 알고 있다면 가장 확실하게 언링크
     kakao_admin_key = os.getenv("KAKAO_ADMIN_KEY")
-    if kakao_admin_key:
-        # 만약 세션/메타데이터에서 target_id를 찾지 못했더라도 카카오 앱의 연결된 목록에서 조회
-        if not kakao_target_id and ("kakao" in providers or kakao_identity or (user_obj and (user_obj.app_metadata or {}).get("provider") == "kakao")):
-            try:
-                ids_req = urllib.request.Request(
-                    "https://kapi.kakao.com/v1/user/ids",
-                    headers={"Authorization": f"KakaoAK {kakao_admin_key}"}
-                )
-                with urllib.request.urlopen(ids_req) as ids_resp:
-                    ids_data = json.loads(ids_resp.read().decode())
-                    elements = ids_data.get("elements", [])
-                    user_email = (user_obj.email if user_obj else None) or session.get("user", {}).get("email")
-                    for cand_id in elements:
-                        try:
-                            u_req = urllib.request.Request(
-                                f"https://kapi.kakao.com/v2/user/me?target_id_type=user_id&target_id={cand_id}",
-                                headers={"Authorization": f"KakaoAK {kakao_admin_key}"}
-                            )
-                            with urllib.request.urlopen(u_req) as u_resp:
-                                cand_data = json.loads(u_resp.read().decode())
-                                cand_email = cand_data.get("kakao_account", {}).get("email")
-                                if cand_email and user_email and cand_email.lower() == user_email.lower():
-                                    kakao_target_id = str(cand_id)
-                                    break
-                        except Exception:
-                            pass
-                    if not kakao_target_id and len(elements) == 1:
-                        kakao_target_id = str(elements[0])
-            except Exception as e:
-                print(f"[카카오 연결 목록 조회 실패] {e}", file=sys.stderr)
-
-        if kakao_target_id:
-            try:
-                post_data = urllib.parse.urlencode({
-                    "target_id_type": "user_id",
-                    "target_id": str(kakao_target_id)
-                }).encode("utf-8")
-                req = urllib.request.Request(
-                    "https://kapi.kakao.com/v1/user/unlink",
-                    headers={
-                        "Authorization": f"KakaoAK {kakao_admin_key}",
-                        "Content-Type": "application/x-www-form-urlencoded"
-                    },
-                    data=post_data
-                )
-                with urllib.request.urlopen(req) as resp:
-                    print(f"[카카오 연동 해제(어드민키) 성공] target_id={kakao_target_id}, res={resp.read().decode()}", file=sys.stderr)
-                    kakao_unlinked = True
-            except Exception as e:
-                print(f"[카카오 어드민키 연동 해제 실패] target_id={kakao_target_id}, {e}", file=sys.stderr)
+    if kakao_admin_key and kakao_target_id:
+        try:
+            post_data = urllib.parse.urlencode({
+                "target_id_type": "user_id",
+                "target_id": str(kakao_target_id)
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                "https://kapi.kakao.com/v1/user/unlink",
+                headers={
+                    "Authorization": f"KakaoAK {kakao_admin_key}",
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                data=post_data
+            )
+            with urllib.request.urlopen(req) as resp:
+                print(f"[카카오 연동 해제(어드민키) 성공] target_id={kakao_target_id}, res={resp.read().decode()}", file=sys.stderr)
+                kakao_unlinked = True
+        except Exception as e:
+            print(f"[카카오 어드민키 연동 해제 실패] target_id={kakao_target_id}, {e}", file=sys.stderr)
 
     # 방식 B: target_id로 실패했거나 없으면 사용자 OAuth access token으로 언링크
     if not kakao_unlinked and provider_token:

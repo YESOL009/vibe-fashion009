@@ -5,7 +5,7 @@
 {% block content %}
 <div class="container py-5">
     <div class="row justify-content-center">
-        <div class="col-md-8 col-lg-6">
+        <div class="col-lg-9 col-xl-8">
             <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white">
                 <div class="text-center mb-4">
                     <div class="d-inline-flex align-items-center justify-content-center bg-warning bg-opacity-25 rounded-circle p-3 mb-3 text-warning">
@@ -13,7 +13,7 @@
                     </div>
                     <span class="badge bg-success text-white px-3 py-1 rounded-pill small mb-2">인증 회원</span>
                     <h2 class="fw-bold mb-1">마이페이지</h2>
-                    <p class="text-muted small">환영합니다! 회원 전용 서비스와 주문 정보를 확인하세요.</p>
+                    <p class="text-muted small">회원 정보 및 주문·환불 내역을 편리하게 확인하고 관리하세요.</p>
                 </div>
 
                 <!-- 에러 및 성공 알림 -->
@@ -35,38 +35,131 @@
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
                         {% for category, message in messages %}
-                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} py-2 px-3 small rounded-3 mb-3" role="alert">
-                            <i class="bi bi-check-circle me-1"></i>{{ message }}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} py-2 px-3 small rounded-3 mb-3 alert-dismissible fade show" role="alert">
+                            <i class="bi bi-check-circle-fill me-1"></i>{{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                         </div>
                         {% endfor %}
                     {% endif %}
                 {% endwith %}
 
-                <div class="bg-light rounded-4 p-4 mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
-                        <span class="text-muted small">이름 / 닉네임</span>
-                        <strong class="text-dark">{{ user.name if user else session.get('user', {}).get('name', '회원') }}</strong>
-                    </div>
-                    <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
-                        <span class="text-muted small">이메일 계정</span>
-                        <strong class="text-dark">{{ user.email if user else session.get('user', {}).get('email', '') }}</strong>
-                    </div>
-                    <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
-                        <span class="text-muted small">계정 상태</span>
-                        <span class="badge bg-success">이메일 인증 완료</span>
-                    </div>
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="text-muted small d-block">보안 관리</span>
-                            <span class="small text-secondary">비밀번호를 정기적으로 변경해주세요.</span>
+                <!-- Bootstrap 5 nav-tabs 3개 -->
+                <ul class="nav nav-tabs nav-fill mb-4 fw-semibold" id="myPageTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active py-3" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile-tab-pane" type="button" role="tab" aria-controls="profile-tab-pane" aria-selected="true">
+                            <i class="bi bi-person-gear me-1"></i>내 정보
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link py-3" id="orders-tab" data-bs-toggle="tab" data-bs-target="#orders-tab-pane" type="button" role="tab" aria-controls="orders-tab-pane" aria-selected="false">
+                            <i class="bi bi-box-seam me-1"></i>주문 내역
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link py-3" id="refunds-tab" data-bs-toggle="tab" data-bs-target="#refunds-tab-pane" type="button" role="tab" aria-controls="refunds-tab-pane" aria-selected="false">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i>환불 내역
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="myPageTabContent">
+                    <!-- 탭 1: 내 정보 -->
+                    <div class="tab-pane fade show active" id="profile-tab-pane" role="tabpanel" aria-labelledby="profile-tab" tabindex="0">
+                        <!-- 현재 등록된 프로필 요약 카드 -->
+                        <div class="bg-light rounded-4 p-4 mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
+                                <span class="text-muted small">이름 / 닉네임</span>
+                                <strong class="text-dark">{{ profile.full_name }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
+                                <span class="text-muted small">이메일 계정</span>
+                                <strong class="text-dark">{{ profile.email }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
+                                <span class="text-muted small">전화번호</span>
+                                <span class="text-dark">{{ profile.phone if profile.phone else '미등록' }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-start mb-3 pb-3 border-bottom">
+                                <span class="text-muted small">기본 배송지</span>
+                                <div class="text-end">
+                                    {% if profile.address %}
+                                        <div class="text-dark fw-semibold">{{ profile.address }}</div>
+                                        {% if profile.address_detail %}
+                                            <div class="text-muted small">{{ profile.address_detail }}</div>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-secondary small">등록된 기본 배송지가 없습니다.</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="text-muted small d-block">보안 관리</span>
+                                    <span class="small text-secondary">비밀번호를 정기적으로 변경해주세요.</span>
+                                </div>
+                                <a href="{{ url_for('auth.reset_password') }}" class="btn btn-outline-dark btn-sm rounded-pill px-3">
+                                    <i class="bi bi-shield-lock me-1"></i>비밀번호 변경
+                                </a>
+                            </div>
                         </div>
-                        <a href="{{ url_for('auth.reset_password') }}" class="btn btn-outline-dark btn-sm rounded-pill px-3">
-                            <i class="bi bi-shield-lock me-1"></i>비밀번호 변경
-                        </a>
+
+                        <!-- 회원 정보 수정 폼 -->
+                        <div class="card border border-light-subtle rounded-4 p-4 mb-4">
+                            <h5 class="fw-bold mb-3 text-dark">
+                                <i class="bi bi-pencil-square me-2 text-warning"></i>회원 정보 수정
+                            </h5>
+                            <form method="POST" action="{{ url_for('main.mypage') }}">
+                                <div class="mb-3">
+                                    <label for="full_name" class="form-label small fw-semibold text-secondary">이름 / 닉네임 <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control rounded-3" id="full_name" name="full_name" value="{{ profile.full_name }}" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="email_readonly" class="form-label small fw-semibold text-secondary">이메일 계정</label>
+                                    <input type="email" class="form-control bg-light text-muted rounded-3" id="email_readonly" value="{{ profile.email }}" readonly>
+                                    <div class="form-text small">이메일 계정은 변경할 수 없습니다.</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="phone" class="form-label small fw-semibold text-secondary">연락처</label>
+                                    <input type="tel" class="form-control rounded-3" id="phone" name="phone" placeholder="예: 010-1234-5678" value="{{ profile.phone }}">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="address" class="form-label small fw-semibold text-secondary">기본 배송지 주소</label>
+                                    <input type="text" class="form-control rounded-3 mb-2" id="address" name="address" placeholder="기본 주소 (예: 서울시 강남구 테헤란로 123)" value="{{ profile.address }}">
+                                    <input type="text" class="form-control rounded-3" id="address_detail" name="address_detail" placeholder="상세 주소 (동, 호수 등)" value="{{ profile.address_detail }}">
+                                </div>
+                                <div class="text-end">
+                                    <button type="submit" class="btn btn-warning fw-bold px-4 py-2 rounded-3 text-dark">
+                                        <i class="bi bi-check2-circle me-1"></i>정보 수정 저장
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- 탭 2: 주문 내역 -->
+                    <div class="tab-pane fade" id="orders-tab-pane" role="tabpanel" aria-labelledby="orders-tab" tabindex="0">
+                        <div class="py-5 text-center my-3 bg-light rounded-4">
+                            <i class="bi bi-box2 text-secondary fs-1 d-block mb-3"></i>
+                            <h5 class="fw-bold text-dark mb-2">아직 주문 내역이 없습니다</h5>
+                            <p class="text-muted small mb-3">VIBE-FASHION의 트렌디한 신상품을 구경해보세요.</p>
+                            <a href="{{ url_for('main.index') }}" class="btn btn-outline-dark btn-sm rounded-pill px-4">
+                                상품 둘러보기
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- 탭 3: 환불 내역 -->
+                    <div class="tab-pane fade" id="refunds-tab-pane" role="tabpanel" aria-labelledby="refunds-tab" tabindex="0">
+                        <div class="py-5 text-center my-3 bg-light rounded-4">
+                            <i class="bi bi-receipt text-secondary fs-1 d-block mb-3"></i>
+                            <h5 class="fw-bold text-dark mb-2">아직 환불 내역이 없습니다</h5>
+                            <p class="text-muted small mb-0">진행 중이거나 완료된 환불/반품 요청 건이 없습니다.</p>
+                        </div>
                     </div>
                 </div>
 
-                <div class="row g-2 mb-4">
+                <!-- 하단 바로가기 및 링크 영역 -->
+                <div class="row g-2 mb-4 mt-2">
                     <div class="col-6">
                         <a href="{{ url_for('main.cart_page') }}" class="btn btn-outline-dark w-100 py-3 rounded-3 text-center text-decoration-none">
                             <i class="bi bi-bag d-block fs-4 mb-1"></i>
@@ -115,7 +208,7 @@
                     탈퇴 시 모든 회원 정보, 주문 내역 및 보유 쿠폰과 포인트가 영구적으로 삭제되며 <strong>복구할 수 없습니다.</strong>
                 </p>
                 <div class="p-3 bg-light rounded-3 small text-dark">
-                    • 등록된 이메일 계정: <strong>{{ user.email if user else session.get('user', {}).get('email', '') }}</strong><br>
+                    • 등록된 이메일 계정: <strong>{{ profile.email }}</strong><br>
                     • 탈퇴 즉시 자동 로그아웃됩니다.
                 </div>
             </div>
