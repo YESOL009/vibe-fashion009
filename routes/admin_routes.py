@@ -27,14 +27,20 @@ from flask import (
     abort
 )
 from dotenv import load_dotenv
+from utils.db import (
+    get_admin_client as get_admin_supabase_client,
+    get_supabase_client as get_anon_supabase_client,
+    parse_datetime,
+    is_valid_uuid,
+)
 from routes.admin_auth import (
     admin_required,
     is_admin_user,
-    get_admin_supabase_client,
-    get_anon_supabase_client
 )
 
 load_dotenv()
+
+_parse_datetime = parse_datetime
 
 # 'admin' 블루프린트 생성 (url_prefix="/admin")
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -167,26 +173,6 @@ def admin_logout():
 # -----------------------------------------------------------------------------
 # 2. 관리자 대시보드 (/admin/dashboard)
 # -----------------------------------------------------------------------------
-
-def _parse_datetime(dt_str: str):
-    """ISO 날짜 문자열을 datetime 객체로 파싱"""
-    if not dt_str:
-        return None
-    try:
-        clean_str = dt_str.replace("Z", "+00:00")
-        if "+" in clean_str:
-            base, tz = clean_str.split("+", 1)
-            # 마이크로초 절삭
-            if "." in base:
-                base = base[:26]
-            clean_str = f"{base}+{tz}"
-        return datetime.datetime.fromisoformat(clean_str)
-    except Exception:
-        try:
-            return datetime.datetime.strptime(dt_str[:19], "%Y-%m-%dT%H:%M:%S")
-        except Exception:
-            return None
-
 
 @admin_bp.route("/dashboard", methods=["GET"])
 @admin_required

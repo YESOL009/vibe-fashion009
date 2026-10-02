@@ -4,38 +4,13 @@
 - 관리자 로그인/로그아웃 및 profiles 테이블 role='admin' 검증
 """
 
-import os
 import sys
 from functools import wraps
-from flask import session, redirect, url_for, request, abort, render_template, flash
-from supabase import create_client, Client
-from dotenv import load_dotenv
-
-load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or SUPABASE_ANON_KEY
-
-
-def get_admin_supabase_client() -> Client | None:
-    """Supabase 서비스 키 관리자 클라이언트 반환 (profiles 등 관리자 권한 작업용)"""
-    if SUPABASE_URL and SUPABASE_SERVICE_KEY:
-        try:
-            return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        except Exception as e:
-            print(f"[Supabase Admin 클라이언트 생성 오류] {e}", file=sys.stderr)
-    return None
-
-
-def get_anon_supabase_client() -> Client | None:
-    """Supabase 익명 클라이언트 반환 (비밀번호 인증용)"""
-    if SUPABASE_URL and SUPABASE_ANON_KEY:
-        try:
-            return create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-        except Exception as e:
-            print(f"[Supabase Anon 클라이언트 생성 오류] {e}", file=sys.stderr)
-    return None
+from flask import session, redirect, url_for, request, abort, flash
+from utils.db import (
+    get_admin_client as get_admin_supabase_client,
+    get_supabase_client as get_anon_supabase_client,
+)
 
 
 def is_admin_user(user_id: str) -> bool:
@@ -76,6 +51,8 @@ def is_admin_user(user_id: str) -> bool:
 def is_direct_address_bar_access(req) -> bool:
     """
     브라우저 주소창 직접 입력(Direct URL Navigation / Bookmark) 감지 함수
+    - 관리자 대시보드 화면(/admin/dashboard) 등 HTML 페이지 탐색을 주소창으로 직접 시도하는 행위 차단
+    - POST 요청 또는 AJAX/API 요청은 주소창 직접 탐색이 아니므로 제외
     - W3C Fetch Metadata 표준: Sec-Fetch-Site == 'none'인 경우 (주소창 타이핑, 북마크 클릭)
     - Referer 헤더가 없거나(None/빈값) 동일 사이트 내부 호스트가 아닌 경우
     """
@@ -85,23 +62,27 @@ def is_direct_address_bar_access(req) -> bool:
     if current_app and current_app.config.get("TESTING") and req.headers.get("X-Test-Allow-Direct"):
         return False
 
+    # 1. POST 요청이나 API/JSON 요청은 주소창 직접 타이핑이 아님
+    if req.method != "GET" or req.is_json or req.path.startswith("/admin/api/"):
+        return False
+
     sec_fetch_site = req.headers.get("Sec-Fetch-Site")
     referrer = req.referrer
     entry_param = req.args.get("entry")
 
-    # 1. 사이트 내부 버튼 클릭(entry=portal)으로 유입되었고, 순수 주소창 타이핑(none)이 아니면 허용
+    # 2. 사이트 내부 버튼 클릭(entry=portal)으로 유입되었고, 순수 주소창 타이핑(none)이 아니면 허용
     if entry_param == "portal" and sec_fetch_site != "none":
         return False
 
-    # 2. 브라우저 표준 Fetch Metadata: 'none'은 주소창 타이핑 또는 북마크 접속을 명시
+    # 3. 브라우저 표준 Fetch Metadata: 'none'은 주소창 타이핑 또는 북마크 접속을 명시
     if sec_fetch_site == "none":
         return True
 
-    # 3. Referer 헤더가 없는 경우 (주소창 직접 타이핑 접속)
+    # 4. Referer 헤더가 없는 경우 (주소창 직접 타이핑 접속)
     if not referrer:
         return True
 
-    # 4. Referer가 현재 사이트의 호스트가 아닌 경우 (외부 사이트 링크 유입 등)
+    # 5. Referer가 현재 사이트의 호스트가 아닌 경우 (외부 사이트 링크 유입 등)
     host_url = req.host_url.rstrip("/")
     if not referrer.startswith(host_url):
         return True

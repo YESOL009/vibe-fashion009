@@ -137,10 +137,25 @@ def login():
             # 세션에 사용자 정보 저장 (user_id 필수 저장)
             session["user_id"] = user.id
             full_name = (user.user_metadata or {}).get("full_name") or email.split("@")[0]
+            
+            # profiles 테이블에서 role 조회 및 세션 등록
+            user_role = "customer"
+            try:
+                admin_client = get_supabase_admin_client()
+                p_res = admin_client.table("profiles").select("role, full_name").eq("id", user.id).maybe_single().execute()
+                if p_res and p_res.data:
+                    user_role = p_res.data.get("role") or "customer"
+                    if p_res.data.get("full_name"):
+                        full_name = p_res.data.get("full_name")
+            except Exception as role_err:
+                print(f"[로그인 시 role 조회 오류] {role_err}", file=sys.stderr)
+
+            session["role"] = user_role
             session["user"] = {
                 "id": user.id,
                 "email": user.email,
-                "name": full_name
+                "name": full_name,
+                "role": user_role
             }
             if auth_session:
                 session["access_token"] = auth_session.access_token
