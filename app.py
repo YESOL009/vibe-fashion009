@@ -42,10 +42,18 @@ def create_app(test_config=None):
     # routes/main.py에 정의된 main_bp와 app/routes/auth.py에 정의된 auth_bp를 가져와서 앱에 연결합니다.
     from routes.main import main_bp
     from app.routes.auth import auth_bp
-    from routes.admin_routes import admin_bp
+    from routes.admin_routes import manage_bp
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
-    app.register_blueprint(admin_bp)
+    app.register_blueprint(manage_bp)
+
+    # 기존 /admin/* 경로로의 접근 원천 차단 (403 Forbidden)
+    from flask import abort
+
+    @app.route("/admin", defaults={"subpath": ""})
+    @app.route("/admin/<path:subpath>")
+    def blocked_legacy_admin(subpath):
+        abort(403, description="login_required_for_admin")
 
     # 403 Forbidden 에러 핸들러 (비관리자 및 주소창 직접 입력 접근 시 403 페이지 표시)
     from flask import render_template

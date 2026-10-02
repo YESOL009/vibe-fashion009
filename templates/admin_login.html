@@ -95,7 +95,7 @@
                     {% endwith %}
 
                     <!-- 로그인 폼 -->
-                    <form method="POST" action="{{ url_for('admin.admin_login', next=request.args.get('next')) }}">
+                    <form method="POST" action="{{ url_for('manage.login', next=request.args.get('next')) }}">
                         <div class="mb-3">
                             <label for="email" class="form-label small text-secondary fw-semibold">관리자 계정 (이메일)</label>
                             <div class="input-group">

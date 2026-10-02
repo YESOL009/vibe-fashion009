@@ -51,7 +51,7 @@ def is_admin_user(user_id: str) -> bool:
 def is_direct_address_bar_access(req) -> bool:
     """
     브라우저 주소창 직접 입력(Direct URL Navigation / Bookmark) 감지 함수
-    - 관리자 대시보드 화면(/admin/dashboard) 등 HTML 페이지 탐색을 주소창으로 직접 시도하는 행위 차단
+    - 관리자 대시보드 화면(/manage/dashboard) 등 HTML 페이지 탐색을 주소창으로 직접 시도하는 행위 차단
     - POST 요청 또는 AJAX/API 요청은 주소창 직접 탐색이 아니므로 제외
     - W3C Fetch Metadata 표준: Sec-Fetch-Site == 'none'인 경우 (주소창 타이핑, 북마크 클릭)
     - Referer 헤더가 없거나(None/빈값) 동일 사이트 내부 호스트가 아닌 경우
@@ -63,7 +63,7 @@ def is_direct_address_bar_access(req) -> bool:
         return False
 
     # 1. POST 요청이나 API/JSON 요청은 주소창 직접 타이핑이 아님
-    if req.method != "GET" or req.is_json or req.path.startswith("/admin/api/"):
+    if req.method != "GET" or req.is_json or req.path.startswith("/manage/api/"):
         return False
 
     sec_fetch_site = req.headers.get("Sec-Fetch-Site")

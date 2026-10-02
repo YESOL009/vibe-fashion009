@@ -85,10 +85,10 @@
     <!-- 1. 관리자 상단 네비게이션 바 -->
     <nav class="navbar navbar-expand-lg admin-navbar sticky-top navbar-dark shadow-sm py-2">
         <div class="container-fluid px-4">
-            <a class="navbar-brand d-flex align-items-center gap-2 fw-black text-white" href="{{ url_for('admin.admin_dashboard') }}">
+            <a class="navbar-brand d-flex align-items-center gap-2 fw-black text-white" href="{{ url_for('manage.dashboard', entry='portal') }}">
                 <i class="bi bi-lightning-charge-fill text-warning"></i>
                 <span>{{ brand_name }}</span>
-                <span class="badge bg-warning text-dark extra-small ms-1">ADMIN</span>
+                <span class="badge bg-warning text-dark extra-small ms-1">CONSOLE</span>
             </a>
 
             <div class="d-flex align-items-center gap-3">
@@ -99,14 +99,14 @@
                 <div class="dropdown">
                     <button class="btn btn-dark btn-sm rounded-pill dropdown-toggle d-flex align-items-center gap-2 px-3 border border-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-person-circle text-warning fs-5"></i>
-                        <span class="small fw-semibold text-white">{{ session.get('user', {}).get('name', '최고관리자') }}</span>
+                        <span class="small fw-semibold text-white">{{ session.get('user', {}).get('name', '관리자') }}</span>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                         <li><h6 class="dropdown-header small text-muted">{{ session.get('user', {}).get('email', 'admin@vibe-fashion.com') }}</h6></li>
                         <li><span class="dropdown-item-text extra-small text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i>권한: System Admin</span></li>
                         <li><hr class="dropdown-divider"></li>
                         <li>
-                            <a class="dropdown-item text-danger small fw-semibold" href="{{ url_for('admin.admin_logout') }}">
+                            <a class="dropdown-item text-danger small fw-semibold" href="{{ url_for('manage.logout') }}">
                                 <i class="bi bi-box-arrow-right me-2"></i>관리자 로그아웃
                             </a>
                         </li>
@@ -138,7 +138,7 @@
                 <button type="button" onclick="window.location.reload();" class="btn btn-outline-secondary btn-sm rounded-3 shadow-sm px-3">
                     <i class="bi bi-arrow-clockwise me-1"></i>새로고침
                 </button>
-                <a href="{{ url_for('admin.export_orders_csv', buyer=search_buyer, product=search_product, date=filter_date, status=filter_status) }}" class="btn btn-success btn-sm rounded-3 shadow-sm px-3 fw-bold text-white">
+                <a href="{{ url_for('manage.export_orders_csv', buyer=search_buyer, product=search_product, date=filter_date, status=filter_status) }}" class="btn btn-success btn-sm rounded-3 shadow-sm px-3 fw-bold text-white">
                     <i class="bi bi-file-earmark-excel me-1"></i>엑셀(CSV) 다운로드
                 </a>
             </div>
@@ -403,7 +403,8 @@
                 </div>
 
                 <!-- 검색 및 필터 폼 -->
-                <form method="GET" action="{{ url_for('admin.admin_dashboard') }}" class="row g-2 mt-2 pt-2 border-top">
+                <form method="GET" action="{{ url_for('manage.dashboard') }}" class="row g-2 mt-2 pt-2 border-top">
+                    <input type="hidden" name="entry" value="portal">
                     <!-- 주문자 및 수령인 검색 -->
                     <div class="col-12 col-sm-6 col-md-3">
                         <div class="input-group input-group-sm">
@@ -442,7 +443,7 @@
                         <button type="submit" class="btn btn-dark btn-sm flex-grow-1 fw-bold">
                             <i class="bi bi-search me-1"></i>검색
                         </button>
-                        <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary btn-sm" title="필터 초기화">
+                        <a href="{{ url_for('manage.dashboard', entry='portal') }}" class="btn btn-outline-secondary btn-sm" title="필터 초기화">
                             <i class="bi bi-x-circle"></i>
                         </a>
                     </div>
@@ -1082,7 +1083,7 @@
                                 <option value="admin">ADMIN (시스템 관리자)</option>
                                 <option value="seller">SELLER (판매자)</option>
                             </select>
-                            <div class="form-text extra-small text-muted">ADMIN 선택 시 /admin/* 전용 접근 권한 부여</div>
+                            <div class="form-text extra-small text-muted">ADMIN 선택 시 관리 콘솔(/manage) 접근 권한 부여</div>
                         </div>
 
                         <!-- 회원 등급 설정 (Grade) -->
@@ -1184,7 +1185,7 @@
             input.value = val;
         }
 
-        // 빠른 재고 수정 모달 제출 (AJAX POST /admin/stock/update)
+        // 빠른 재고 수정 모달 제출 (AJAX POST /manage/stock/update)
         async function submitQuickStockUpdate() {
             const optionId = document.getElementById('quickModalOptionId').value;
             const stockInput = document.getElementById('quickModalStockInput');
@@ -1200,7 +1201,7 @@
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>저장 중...';
 
             try {
-                const res = await fetch('/admin/stock/update', {
+                const res = await fetch('/manage/stock/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ option_id: optionId, stock: stockVal })
@@ -1315,7 +1316,7 @@
             btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
             try {
-                const res = await fetch('/admin/stock/update', {
+                const res = await fetch('/manage/stock/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ option_id: optionId, stock: stockVal })
@@ -1403,7 +1404,7 @@
             input.value = v;
         }
 
-        // 사용자 정보 수정 제출 (AJAX POST /admin/users/update)
+        // 사용자 정보 수정 제출 (AJAX POST /manage/users/update)
         async function submitUserEdit() {
             const userId = document.getElementById('editModalTargetUserId').value;
             const role = document.getElementById('editModalRoleSelect').value;
@@ -1422,7 +1423,7 @@
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>저장 중...';
 
             try {
-                const res = await fetch('/admin/users/update', {
+                const res = await fetch('/manage/users/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1522,7 +1523,7 @@
             }
 
             try {
-                const res = await fetch('/admin/orders/status/update', {
+                const res = await fetch('/manage/orders/status/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

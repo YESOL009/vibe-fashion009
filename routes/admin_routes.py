@@ -1,12 +1,12 @@
 """
-관리자(Admin) 전용 라우트 블루프린트 모듈 (admin_routes.py)
-- 관리자 로그인/로그아웃 (/admin/login, /admin/logout)
-- 관리자 대시보드 (/admin/dashboard)
+관리자(Manage) 전용 라우트 블루프린트 모듈 (admin_routes.py)
+- 관리자 로그인/로그아웃 (/manage/login, /manage/logout)
+- 관리자 대시보드 (/manage/dashboard)
 - KPI 지표 계산 (오늘/전일 주문수, 판매량, 매출액, 재고 상태)
 - orders, order_items, products, product_options, profiles 테이블 결합
 - 주문/판매 현황 검색/필터 (주문자, 상품명, 날짜, 상태)
 - 시간대별 차트 데이터 (판매량 Line Chart, 매출액 Bar Chart)
-- 엑셀(CSV) 다운로드 (/admin/orders/export)
+- 엑셀(CSV) 다운로드 (/manage/orders/export)
 """
 
 import os
@@ -42,23 +42,24 @@ load_dotenv()
 
 _parse_datetime = parse_datetime
 
-# 'admin' 블루프린트 생성 (url_prefix="/admin")
-admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
+# 'manage' 블루프린트 생성 (url_prefix="/manage")
+manage_bp = Blueprint("manage", __name__, url_prefix="/manage")
+admin_bp = manage_bp  # 하위 호환성 유지
 
 
 # -----------------------------------------------------------------------------
 # 1. 관리자 전용 로그인 / 로그아웃
 # -----------------------------------------------------------------------------
 
-@admin_bp.route("/login", methods=["GET", "POST"])
-def admin_login():
+@manage_bp.route("/login", methods=["GET", "POST"])
+def login():
     """
-    [GET/POST /admin/login]
+    [GET/POST /manage/login]
     - 관리자 전용 로그인 화면 및 인증 처리
     - 웹사이트에 로그인되지 않은 상태(비로그인) 접근 시 관리자 로그인 화면 노출 차단 (403 Forbidden)
     - 일반 회원(role != 'admin') 접근 시 403 Forbidden 차단
     - profiles 테이블의 role='admin'인 사용자만 로그인 가능
-    - 로그인 성공 시 /admin/dashboard 로 이동
+    - 로그인 성공 시 /manage/dashboard 로 이동
     """
     user_id = session.get("user_id")
 
@@ -69,7 +70,7 @@ def admin_login():
     # 2. 이미 관리자로 권한 인증 완료된 상태이면 바로 대시보드로 이동
     if session.get("role") == "admin":
         session["_admin_login_redirect"] = True
-        return redirect(url_for("admin.admin_dashboard"))
+        return redirect(url_for("manage.dashboard"))
 
     # 3. 로그인되어 있으나 관리자 권한(role='admin')이 없는 일반 회원이면 403 Forbidden 차단
     if not is_admin_user(user_id):
@@ -118,12 +119,10 @@ def admin_login():
 
             # 3. 비관리자(role != 'admin') 접근 시 403 페이지 표시
             if role != "admin":
-                # 일반 회원 로그아웃 처리
                 try:
                     anon_client.auth.sign_out()
                 except Exception:
                     pass
-                # 비관리자는 403 Forbidden 렌더링
                 return render_template("403.html", brand_name="VIBE-FASHION"), 403
 
             # 4. 관리자 로그인 성공: 세션에 관리자 정보 저장
@@ -141,7 +140,7 @@ def admin_login():
 
             flash(f"관리자({admin_name})님, 환영합니다.", "success")
             next_url = request.args.get("next")
-            return redirect(next_url or url_for("admin.admin_dashboard"))
+            return redirect(next_url or url_for("manage.dashboard"))
 
         except Exception as e:
             print(f"[관리자 로그인 오류] {e}", file=sys.stderr)
@@ -151,9 +150,12 @@ def admin_login():
     return render_template("admin_login.html", error_msg=error_msg, brand_name="VIBE-FASHION")
 
 
-@admin_bp.route("/logout", methods=["GET", "POST"])
-def admin_logout():
-    """[GET /admin/logout] 관리자 로그아웃"""
+admin_login = login  # alias 호환
+
+
+@manage_bp.route("/logout", methods=["GET", "POST"])
+def logout():
+    """[GET /manage/logout] 관리자 로그아웃"""
     session.pop("user_id", None)
     session.pop("role", None)
     session.pop("user", None)
@@ -167,18 +169,21 @@ def admin_logout():
         pass
 
     flash("관리자 로그아웃되었습니다.", "info")
-    return redirect(url_for("admin.admin_login"))
+    return redirect(url_for("manage.login"))
+
+
+admin_logout = logout  # alias 호환
 
 
 # -----------------------------------------------------------------------------
-# 2. 관리자 대시보드 (/admin/dashboard)
+# 2. 관리자 대시보드 (/manage/dashboard)
 # -----------------------------------------------------------------------------
 
-@admin_bp.route("/dashboard", methods=["GET"])
+@manage_bp.route("/dashboard", methods=["GET"])
 @admin_required
-def admin_dashboard():
+def dashboard():
     """
-    [GET /admin/dashboard]
+    [GET /manage/dashboard]
     - 관리자 대시보드 메인 화면
     - 상단 KPI 카드 6개 (오늘 기준 건수, 수량, 매출액, 판매중/품절/재고부족 상품수 및 전일대비 증가율)
     - 주문/판매 현황 테이블 (검색/필터 지원)
@@ -596,14 +601,14 @@ def admin_dashboard():
 
 
 # -----------------------------------------------------------------------------
-# 3. 엑셀(CSV) 다운로드 라우트 (/admin/orders/export)
+# 3. 엑셀(CSV) 다운로드 라우트 (/manage/orders/export)
 # -----------------------------------------------------------------------------
 
-@admin_bp.route("/orders/export", methods=["GET"])
+@manage_bp.route("/orders/export", methods=["GET"])
 @admin_required
 def export_orders_csv():
     """
-    [GET /admin/orders/export]
+    [GET /manage/orders/export]
     - 현재 필터 조건(검색어, 날짜, 상태)이 적용된 주문/판매 현황을 CSV 파일로 다운로드
     - MS 엑셀에서 한글이 깨지지 않도록 UTF-8 with BOM 인코딩 적용
     """
@@ -742,14 +747,15 @@ def export_orders_csv():
 
 
 # -----------------------------------------------------------------------------
-# 4. 차트용 시간대별 API (/admin/api/hourly-stats)
+# -----------------------------------------------------------------------------
+# 4. 차트용 시간대별 API (/manage/api/hourly-stats)
 # -----------------------------------------------------------------------------
 
-@admin_bp.route("/api/hourly-stats", methods=["GET"])
+@manage_bp.route("/api/hourly-stats", methods=["GET"])
 @admin_required
 def api_hourly_stats():
     """
-    [GET /admin/api/hourly-stats]
+    [GET /manage/api/hourly-stats]
     - 오늘 시간대별 판매량 및 매출액 JSON 반환 (Chart.js 동적 갱신용)
     """
     admin_client = get_admin_supabase_client() or get_anon_supabase_client()
@@ -797,15 +803,15 @@ def api_hourly_stats():
 
 
 # -----------------------------------------------------------------------------
-# 5. 재고 수량 수정 API 및 라우트 (/admin/stock/update)
+# 5. 재고 수량 수정 API 및 라우트 (/manage/stock/update)
 # -----------------------------------------------------------------------------
 
-@admin_bp.route("/stock/update", methods=["POST"])
-@admin_bp.route("/api/stock/update", methods=["POST"])
+@manage_bp.route("/stock/update", methods=["POST"])
+@manage_bp.route("/api/stock/update", methods=["POST"])
 @admin_required
 def update_stock():
     """
-    [POST /admin/stock/update, POST /admin/api/stock/update]
+    [POST /manage/stock/update, POST /manage/api/stock/update]
     - 관리자가 특정 상품 옵션의 재고 수량을 수정
     - JSON 및 Form 요청 모두 지원
     - 0 이상의 정수만 허용
@@ -821,7 +827,7 @@ def update_stock():
         if request.is_json:
             return jsonify({"success": False, "error": "옵션 ID가 전달되지 않았습니다."}), 400
         flash("옵션 ID가 유효하지 않습니다.", "danger")
-        return redirect(request.referrer or url_for("admin.admin_dashboard"))
+        return redirect(request.referrer or url_for("manage.dashboard"))
 
     try:
         new_stock = int(raw_stock)
@@ -831,14 +837,14 @@ def update_stock():
         if request.is_json:
             return jsonify({"success": False, "error": "재고 수량은 0 이상의 정수여야 합니다."}), 400
         flash("재고 수량은 0 이상의 정수여야 합니다.", "danger")
-        return redirect(request.referrer or url_for("admin.admin_dashboard"))
+        return redirect(request.referrer or url_for("manage.dashboard"))
 
     admin_client = get_admin_supabase_client() or get_anon_supabase_client()
     if not admin_client:
         if request.is_json:
             return jsonify({"success": False, "error": "데이터베이스 연결에 실패했습니다."}), 500
         flash("데이터베이스 연결에 실패했습니다.", "danger")
-        return redirect(request.referrer or url_for("admin.admin_dashboard"))
+        return redirect(request.referrer or url_for("manage.dashboard"))
 
     try:
         # product_options 테이블 stock & stock_quantity 동시 갱신
@@ -856,7 +862,7 @@ def update_stock():
             if request.is_json:
                 return jsonify({"success": False, "error": "해당 옵션을 찾을 수 없습니다."}), 404
             flash("해당 옵션을 찾을 수 없습니다.", "danger")
-            return redirect(request.referrer or url_for("admin.admin_dashboard"))
+            return redirect(request.referrer or url_for("manage.dashboard"))
 
         updated_opt = update_res.data[0]
         color = updated_opt.get("color") or ""
@@ -885,26 +891,26 @@ def update_stock():
             })
 
         flash(f"재고가 {new_stock}개로 성공적으로 수정되었습니다.{opt_info}", "success")
-        return redirect(request.referrer or url_for("admin.admin_dashboard"))
+        return redirect(request.referrer or url_for("manage.dashboard"))
 
     except Exception as e:
         print(f"[재고 수정 오류] {e}", file=sys.stderr)
         if request.is_json:
             return jsonify({"success": False, "error": f"재고 수정 중 오류가 발생했습니다: {str(e)}"}), 500
         flash("재고 수정 중 오류가 발생했습니다.", "danger")
-        return redirect(request.referrer or url_for("admin.admin_dashboard"))
+        return redirect(request.referrer or url_for("manage.dashboard"))
 
 
 # -----------------------------------------------------------------------------
-# 6. 사용자(회원) 관리 API 및 라우트 (/admin/users/update)
+# 6. 사용자(회원) 관리 API 및 라우트 (/manage/users/update)
 # -----------------------------------------------------------------------------
 
-@admin_bp.route("/users/update", methods=["POST"])
-@admin_bp.route("/api/users/update", methods=["POST"])
+@manage_bp.route("/users/update", methods=["POST"])
+@manage_bp.route("/api/users/update", methods=["POST"])
 @admin_required
 def update_user_profile():
     """
-    [POST /admin/users/update, POST /admin/api/users/update]
+    [POST /manage/users/update, POST /manage/api/users/update]
     - 관리자가 특정 회원의 등급(grade), 역할(role), 적립금(points), 이름, 연락처 수정
     - JSON 및 Form 요청 모두 지원
     - profiles 테이블 업데이트 및 Supabase Auth user_metadata 동기화
@@ -916,7 +922,7 @@ def update_user_profile():
         if request.is_json:
             return jsonify({"success": False, "error": "회원 ID가 전달되지 않았습니다."}), 400
         flash("회원 ID가 유효하지 않습니다.", "danger")
-        return redirect(request.referrer or url_for("admin.admin_dashboard"))
+        return redirect(request.referrer or url_for("manage.dashboard"))
 
     new_role = data.get("role")
     new_grade = data.get("grade")
@@ -933,14 +939,14 @@ def update_user_profile():
         new_role = new_role.strip().lower()
         if new_role not in valid_roles:
             err = f"역할은 {', '.join(valid_roles)} 중 하나여야 합니다."
-            return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+            return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("manage.dashboard")))[1]
         update_payload["role"] = new_role
 
     if new_grade:
         new_grade = new_grade.strip().upper()
         if new_grade not in valid_grades:
             err = f"등급은 {', '.join(valid_grades)} 중 하나여야 합니다."
-            return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+            return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("manage.dashboard")))[1]
         update_payload["grade"] = new_grade
 
     if new_points is not None and str(new_points).strip() != "":
@@ -951,7 +957,7 @@ def update_user_profile():
             update_payload["points"] = pts_int
         except (ValueError, TypeError):
             err = "적립금은 0 이상의 정수여야 합니다."
-            return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+            return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("manage.dashboard")))[1]
 
     if new_name is not None and new_name.strip():
         update_payload["full_name"] = new_name.strip()
@@ -961,14 +967,14 @@ def update_user_profile():
 
     if not update_payload:
         err = "수정할 항목이 지정되지 않았습니다."
-        return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "warning"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+        return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "warning"), redirect(request.referrer or url_for("manage.dashboard")))[1]
 
     update_payload["updated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     admin_client = get_admin_supabase_client() or get_anon_supabase_client()
     if not admin_client:
         err = "데이터베이스 연결에 실패했습니다."
-        return (jsonify({"success": False, "error": err}), 500) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+        return (jsonify({"success": False, "error": err}), 500) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("manage.dashboard")))[1]
 
     try:
         # 1. profiles 테이블 갱신
@@ -981,7 +987,7 @@ def update_user_profile():
 
         if not res or not res.data:
             err = "해당 회원을 찾을 수 없거나 수정에 실패했습니다."
-            return (jsonify({"success": False, "error": err}), 404) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+            return (jsonify({"success": False, "error": err}), 404) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("manage.dashboard")))[1]
 
         updated_profile = res.data[0]
 
@@ -1007,7 +1013,7 @@ def update_user_profile():
             })
 
         flash(msg, "success")
-        return redirect(request.referrer or url_for("admin.admin_dashboard"))
+        return redirect(request.referrer or url_for("manage.dashboard"))
 
     except Exception as e:
         print(f"[사용자 정보 수정 오류] {e}", file=sys.stderr)
@@ -1015,19 +1021,19 @@ def update_user_profile():
         if request.is_json:
             return jsonify({"success": False, "error": err}), 500
         flash(err, "danger")
-        return redirect(request.referrer or url_for("admin.admin_dashboard"))
+        return redirect(request.referrer or url_for("manage.dashboard"))
 
 
 # -----------------------------------------------------------------------------
-# 7. 주문 및 배송 상태 변경 API (/admin/orders/status/update)
+# 7. 주문 및 배송 상태 변경 API (/manage/orders/status/update)
 # -----------------------------------------------------------------------------
 
-@admin_bp.route("/orders/status/update", methods=["POST"])
-@admin_bp.route("/api/orders/status/update", methods=["POST"])
+@manage_bp.route("/orders/status/update", methods=["POST"])
+@manage_bp.route("/api/orders/status/update", methods=["POST"])
 @admin_required
 def update_order_status():
     """
-    [POST /admin/orders/status/update, POST /admin/api/orders/status/update]
+    [POST /manage/orders/status/update, POST /manage/api/orders/status/update]
     - 관리자가 주문의 배송 및 결제 상태 변경 (결제완료, 배송준비, 배송중, 배송완료, 주문취소, 환불완료)
     - JSON 및 Form 요청 모두 지원
     - orders 테이블 status 업데이트
@@ -1048,16 +1054,16 @@ def update_order_status():
 
     if not order_identifier:
         err = "주문 번호가 전달되지 않았습니다."
-        return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+        return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("manage.dashboard")))[1]
 
     if new_status not in status_map:
         err = f"유효하지 않은 주문 상태입니다. ({', '.join(status_map.keys())})"
-        return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+        return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("manage.dashboard")))[1]
 
     admin_client = get_admin_supabase_client() or get_anon_supabase_client()
     if not admin_client:
         err = "데이터베이스 연결에 실패했습니다."
-        return (jsonify({"success": False, "error": err}), 500) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+        return (jsonify({"success": False, "error": err}), 500) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("manage.dashboard")))[1]
 
     try:
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -1091,7 +1097,7 @@ def update_order_status():
 
         if not res or not res.data:
             err = f"주문({order_identifier})을 찾을 수 없거나 상태 업데이트에 실패했습니다."
-            return (jsonify({"success": False, "error": err}), 404) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+            return (jsonify({"success": False, "error": err}), 404) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("manage.dashboard")))[1]
 
         updated_order = res.data[0]
         status_label, badge_class = status_map[new_status]
@@ -1111,7 +1117,7 @@ def update_order_status():
             })
 
         flash(msg, "success")
-        return redirect(request.referrer or url_for("admin.admin_dashboard"))
+        return redirect(request.referrer or url_for("manage.dashboard"))
 
     except Exception as e:
         print(f"[주문 상태 변경 오류] {e}", file=sys.stderr)
@@ -1119,7 +1125,11 @@ def update_order_status():
         if request.is_json:
             return jsonify({"success": False, "error": err}), 500
         flash(err, "danger")
-        return redirect(request.referrer or url_for("admin.admin_dashboard"))
+        return redirect(request.referrer or url_for("manage.dashboard"))
+
+
+# 호환성 alias
+admin_dashboard = dashboard
 
 
 
