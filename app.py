@@ -47,14 +47,6 @@ def create_app(test_config=None):
     app.register_blueprint(auth_bp)
     app.register_blueprint(manage_bp)
 
-    # 기존 /admin/* 경로로의 접근 원천 차단 (403 Forbidden)
-    from flask import abort
-
-    @app.route("/admin", defaults={"subpath": ""})
-    @app.route("/admin/<path:subpath>")
-    def blocked_legacy_admin(subpath):
-        abort(403, description="login_required_for_admin")
-
     # 403 Forbidden 에러 핸들러 (비관리자 및 주소창 직접 입력 접근 시 403 페이지 표시)
     from flask import render_template
 
