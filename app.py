@@ -47,12 +47,13 @@ def create_app(test_config=None):
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
 
-    # 403 Forbidden 에러 핸들러 (비관리자 접근 시 403 페이지 표시)
+    # 403 Forbidden 에러 핸들러 (비관리자 및 주소창 직접 입력 접근 시 403 페이지 표시)
     from flask import render_template
 
     @app.errorhandler(403)
     def forbidden_error(error):
-        return render_template("403.html", brand_name="VIBE-FASHION"), 403
+        error_desc = getattr(error, "description", None)
+        return render_template("403.html", brand_name="VIBE-FASHION", error_reason=error_desc), 403
 
     # 컨텍스트 프로세서: 모든 템플릿에서 is_admin 변수 사용 가능하도록 등록
     from routes.admin_auth import is_admin_user

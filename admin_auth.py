@@ -4,6 +4,7 @@
 from routes.admin_auth import (
     admin_required,
     is_admin_user,
+    is_direct_address_bar_access,
     get_admin_supabase_client,
     get_anon_supabase_client
 )
@@ -11,6 +12,7 @@ from routes.admin_auth import (
 __all__ = [
     "admin_required",
     "is_admin_user",
+    "is_direct_address_bar_access",
     "get_admin_supabase_client",
     "get_anon_supabase_client"
 ]

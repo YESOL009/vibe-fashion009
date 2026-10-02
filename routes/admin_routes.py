@@ -55,6 +55,7 @@ def admin_login():
     """
     # 이미 관리자로 로그인되어 있으면 대시보드로 이동
     if session.get("user_id") and session.get("role") == "admin":
+        session["_admin_login_redirect"] = True
         return redirect(url_for("admin.admin_dashboard"))
 
     error_msg = None
@@ -111,6 +112,7 @@ def admin_login():
             # 4. 관리자 로그인 성공: 세션에 관리자 정보 저장
             session["user_id"] = user.id
             session["role"] = "admin"
+            session["_admin_login_redirect"] = True
             admin_name = (profile_data.get("full_name") if profile_data else None) or email.split("@")[0]
             session["user"] = {
                 "id": user.id,
