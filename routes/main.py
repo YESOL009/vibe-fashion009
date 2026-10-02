@@ -728,27 +728,38 @@ def _get_cart_items_and_total(user_id=None):
 
                     option_res = (
                         admin_client.table("product_options")
-                        .select("color, size")
+                        .select("color, size, stock, stock_quantity")
                         .eq("id", option_id)
                         .maybe_single()
                         .execute()
                     )
                     color = "기본"
                     size = "기본"
+                    stock = 0
                     if option_res and option_res.data:
                         color = option_res.data.get("color", "기본")
                         size = option_res.data.get("size", "기본")
+                        stock_val = (
+                            option_res.data.get("stock")
+                            if option_res.data.get("stock") is not None
+                            else option_res.data.get("stock_quantity", 0)
+                        )
+                        stock = int(stock_val or 0)
 
                     items.append({
                         "cart_id": cart_id,
                         "id": product_id,
+                        "option_id": option_id,
                         "name": prod_name,
                         "price": price,
                         "price_formatted": f"{price:,}원",
                         "quantity": qty,
+                        "stock": stock,
                         "subtotal": item_total,
                         "subtotal_formatted": f"{item_total:,}원",
                         "thumbnail_url": thumbnail_url,
+                        "color": color,
+                        "size": size,
                         "option": f"{color}/{size}"
                     })
             except Exception as e:
@@ -756,19 +767,42 @@ def _get_cart_items_and_total(user_id=None):
 
     if not items:
         cart = _get_cart()
+        admin_client = get_admin_client() or supabase
         for pid, info in cart.items():
             qty = int(info.get("quantity", 1))
             price = int(info.get("price", 0))
             item_total = price * qty
             total_price += item_total
+            opt_id = info.get("option_id")
+            stock = int(info.get("stock", 10))
+            if opt_id and admin_client:
+                try:
+                    opt_res = (
+                        admin_client.table("product_options")
+                        .select("stock, stock_quantity")
+                        .eq("id", opt_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    if opt_res and opt_res.data:
+                        stock_val = (
+                            opt_res.data.get("stock")
+                            if opt_res.data.get("stock") is not None
+                            else opt_res.data.get("stock_quantity", 0)
+                        )
+                        stock = int(stock_val or 0)
+                except Exception:
+                    pass
 
             items.append({
                 "cart_id": pid,
                 "id": info.get("id") or pid,
+                "option_id": opt_id,
                 "name": info.get("name"),
                 "price": price,
                 "price_formatted": f"{price:,}원",
                 "quantity": qty,
+                "stock": stock,
                 "subtotal": item_total,
                 "subtotal_formatted": f"{item_total:,}원",
                 "thumbnail_url": info.get("thumbnail_url"),
@@ -823,17 +857,79 @@ def wishlist_page():
 # 주문 및 결제 (Checkout) 라우트
 # -----------------------------------------------------------------------------
 
-def _get_available_coupons(is_logged_in: bool = False):
+def _get_user_used_coupons(user_id=None):
+    """
+    사용자가 이미 사용한 쿠폰 코드 목록 반환
+    - Flask session 및 Supabase Auth user_metadata 연동
+    """
+    used = set()
+    # 1. 세션에서 확인
+    sess_used = session.get("used_coupons") or []
+    if isinstance(sess_used, list):
+        used.update(sess_used)
+
+    # 2. Supabase Auth user_metadata에서 확인
+    if user_id and _is_valid_uuid(user_id):
+        admin_client = get_admin_client() or supabase
+        if admin_client:
+            try:
+                user_res = admin_client.auth.admin.get_user_by_id(user_id)
+                if user_res and hasattr(user_res, "user") and user_res.user:
+                    user_meta = getattr(user_res.user, "user_metadata", {}) or {}
+                    meta_used = user_meta.get("used_coupons") or []
+                    if isinstance(meta_used, list):
+                        used.update(meta_used)
+            except Exception as e:
+                print(f"[사용자 사용 쿠폰 조회 알림] {e}", file=sys.stderr)
+
+    return list(used)
+
+
+def _mark_coupon_as_used(coupon_code, user_id=None):
+    """
+    결제 시 사용한 쿠폰을 사용 완료 상태로 저장하여 다시 표시되지 않도록 처리
+    - 세션 session['used_coupons'] 및 Supabase Auth user_metadata에 저장
+    """
+    if not coupon_code:
+        return
+
+    # 1. 세션 저장
+    sess_used = list(session.get("used_coupons") or [])
+    if coupon_code not in sess_used:
+        sess_used.append(coupon_code)
+        session["used_coupons"] = sess_used
+        session.modified = True
+
+    # 2. Supabase Auth user_metadata 저장
+    if user_id and _is_valid_uuid(user_id):
+        admin_client = get_admin_client() or supabase
+        if admin_client:
+            try:
+                user_res = admin_client.auth.admin.get_user_by_id(user_id)
+                if user_res and hasattr(user_res, "user") and user_res.user:
+                    user_meta = getattr(user_res.user, "user_metadata", {}) or {}
+                    meta_used = list(user_meta.get("used_coupons") or [])
+                    if coupon_code not in meta_used:
+                        meta_used.append(coupon_code)
+                        admin_client.auth.admin.update_user_by_id(
+                            user_id,
+                            {"user_metadata": {**user_meta, "used_coupons": meta_used}}
+                        )
+            except Exception as e:
+                print(f"[쿠폰 사용 완료 처리 알림] {e}", file=sys.stderr)
+
+
+def _get_available_coupons(is_logged_in: bool = False, user_id: str = None):
     """
     사용자가 사용 가능한 쿠폰 목록 반환
     - 로그인된 회원에게만 신규회원 웰컴 쿠폰 제공
     - 비로그인(게스트)은 회원 전용 쿠폰 사용 불가
+    - 결제 시 이미 사용한 쿠폰은 목록에서 제외(사라지게 처리)
     """
     if not is_logged_in:
         return []
 
-    # 로그인 회원 전용 쿠폰 목록
-    return [
+    all_coupons = [
         {
             "code": "WELCOME15",
             "name": "신규회원 가입 15% 웰컴 쿠폰",
@@ -852,24 +948,120 @@ def _get_available_coupons(is_logged_in: bool = False):
         }
     ]
 
+    used_coupons = _get_user_used_coupons(user_id)
+    # 이미 사용된 쿠폰은 목록에서 제외
+    return [c for c in all_coupons if c["code"] not in used_coupons]
 
-@main_bp.route("/checkout", methods=["GET"])
+
+def _is_valid_uuid(val):
+    """UUID 문자열 형식 유효성 확인 헬퍼"""
+    if not val:
+        return False
+    try:
+        import uuid
+        uuid.UUID(str(val))
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+@main_bp.route("/order/checkout", methods=["GET"])
+@login_required
 def checkout_page():
     """
-    주문/결제 화면
+    [GET /order/checkout] 주문서 작성 및 결제 화면
+    - 로그인 필수 (@login_required)
+    - 장바구니 비어있으면 /cart 리다이렉트
+    - 장바구니에 품절(stock=0) 아이템이 하나라도 있으면 /cart 리다이렉트 및
+      '품절된 상품이 있어 주문할 수 없습니다' 안내
+    - 장바구니 아이템 목록 조회 (수정 불가)
+    - 마이페이지 기본 배송지 (profiles 테이블) 조회
+    - 결제 금액 요약 (상품금액 + 배송비 = 최종금액)
     """
     user_id = session.get("user_id")
+    if not user_id:
+        return redirect(url_for("auth.login", error="login_required"))
+
     items, total_price = _get_cart_items_and_total(user_id)
 
+    # 1. 장바구니 비어있으면 /cart 리다이렉트
     if not items:
         flash("장바구니가 비어 있습니다. 상품을 먼저 담아주세요.", "info")
         return redirect(url_for("main.cart_page"))
 
+    # 2. 장바구니에 품절(stock=0) 아이템이 하나라도 있으면 /cart로 리다이렉트하고 안내
+    has_out_of_stock = any(int(item.get("stock", 0)) <= 0 for item in items)
+    if has_out_of_stock:
+        flash("품절된 상품이 있어 주문할 수 없습니다", "danger")
+        return redirect(url_for("main.cart_page"))
+
+    # 3. 배송비 및 최종금액 계산
     shipping_fee = 0 if (total_price >= 30000 or total_price == 0) else 3000
     final_total = total_price + shipping_fee
 
-    is_logged_in = bool(session.get("user") or session.get("user_id"))
-    coupons = _get_available_coupons(is_logged_in=is_logged_in)
+    # 4. 마이페이지에 저장된 기본 배송지 (profiles 테이블) 조회
+    admin_client = get_admin_client() or supabase
+    profile_data = {}
+    auth_user = None
+
+    if admin_client and user_id and _is_valid_uuid(user_id):
+        try:
+            p_res = (
+                admin_client.table("profiles")
+                .select("*")
+                .eq("id", user_id)
+                .maybe_single()
+                .execute()
+            )
+            if p_res and p_res.data:
+                profile_data = p_res.data
+        except Exception as e:
+            print(f"[checkout profiles 조회 오류] {e}", file=sys.stderr)
+
+        try:
+            u_res = admin_client.auth.admin.get_user_by_id(user_id)
+            if u_res and hasattr(u_res, "user"):
+                auth_user = u_res.user
+        except Exception:
+            pass
+
+    user_meta = getattr(auth_user, "user_metadata", {}) or {}
+    session_user = session.get("user") or {}
+
+    default_name = (
+        profile_data.get("full_name")
+        or user_meta.get("full_name")
+        or user_meta.get("name")
+        or session_user.get("name")
+        or ""
+    )
+    default_phone = (
+        profile_data.get("phone")
+        or user_meta.get("phone")
+        or ""
+    )
+    default_address = (
+        profile_data.get("address")
+        or profile_data.get("shipping_address")
+        or user_meta.get("address")
+        or ""
+    )
+    default_address_detail = (
+        profile_data.get("address_detail")
+        or profile_data.get("shipping_address_detail")
+        or user_meta.get("address_detail")
+        or ""
+    )
+
+    default_delivery = {
+        "recipient_name": default_name,
+        "recipient_phone": default_phone,
+        "shipping_address": default_address,
+        "shipping_address_detail": default_address_detail,
+        "has_saved_address": bool(default_address or default_phone)
+    }
+
+    coupons = _get_available_coupons(is_logged_in=True, user_id=user_id)
 
     return render_template(
         "checkout.html",
@@ -878,76 +1070,585 @@ def checkout_page():
         total_price=total_price,
         total_price_formatted=f"{total_price:,}원",
         shipping_fee=shipping_fee,
-        shipping_fee_formatted=f"{shipping_fee:,}원" if shipping_fee > 0 else "무료배송",
+        shipping_fee_formatted=f"{shipping_fee:,}원" if shipping_fee > 0 else "0원 (무료배송)",
         final_total=final_total,
         final_total_formatted=f"{final_total:,}원",
         available_coupons=coupons,
-        is_logged_in=is_logged_in,
+        is_logged_in=True,
+        default_delivery=default_delivery,
         user=session.get("user")
     )
 
 
+@main_bp.route("/checkout", methods=["GET"])
+def checkout_redirect():
+    """/checkout 접속 시 canonical 엔드포인트 /order/checkout 으로 리다이렉트"""
+    return redirect(url_for("main.checkout_page"))
+
+
+@main_bp.route("/api/user/default-address", methods=["GET"])
+@login_required
+def api_get_default_address():
+    """
+    [GET /api/user/default-address]
+    - profiles 테이블에서 현재 로그인 사용자의 기본 배송지 정보 조회
+    """
+    user_id = session.get("user_id")
+    admin_client = get_admin_client() or supabase
+    profile_data = {}
+    auth_user = None
+
+    if admin_client and user_id and _is_valid_uuid(user_id):
+        try:
+            p_res = (
+                admin_client.table("profiles")
+                .select("*")
+                .eq("id", user_id)
+                .maybe_single()
+                .execute()
+            )
+            if p_res and p_res.data:
+                profile_data = p_res.data
+        except Exception as e:
+            print(f"[api_get_default_address profiles 조회 오류] {e}", file=sys.stderr)
+
+        try:
+            u_res = admin_client.auth.admin.get_user_by_id(user_id)
+            if u_res and hasattr(u_res, "user"):
+                auth_user = u_res.user
+        except Exception:
+            pass
+
+    user_meta = getattr(auth_user, "user_metadata", {}) or {}
+    session_user = session.get("user") or {}
+
+    recipient_name = (
+        profile_data.get("full_name")
+        or user_meta.get("full_name")
+        or user_meta.get("name")
+        or session_user.get("name")
+        or ""
+    )
+    phone = (
+        profile_data.get("phone")
+        or user_meta.get("phone")
+        or ""
+    )
+    address = (
+        profile_data.get("address")
+        or profile_data.get("shipping_address")
+        or user_meta.get("address")
+        or ""
+    )
+    address_detail = (
+        profile_data.get("address_detail")
+        or profile_data.get("shipping_address_detail")
+        or user_meta.get("address_detail")
+        or ""
+    )
+
+    has_address = bool(address or phone)
+    return jsonify({
+        "success": True,
+        "has_address": has_address,
+        "data": {
+            "recipient_name": recipient_name,
+            "recipient_phone": phone,
+            "shipping_address": address,
+            "shipping_address_detail": address_detail
+        }
+    })
+
+
+@main_bp.route("/order/create", methods=["POST"])
+@main_bp.route("/order/checkout", methods=["POST"])
 @main_bp.route("/checkout/process", methods=["POST"])
-def checkout_process():
+@login_required
+def order_create():
     """
-    결제 처리 및 주문 완료
+    [POST /order/create] 주문 생성 및 결제 처리
+    처리 순서 (반드시 이 순서로):
+    1. 장바구니 조회 + 재고 확인 (재고 부족 시 에러, 처리 중단, 아무 것도 쓰지 않음)
+    2. 배송지 입력값 서버 측 재검증 (휴대폰 번호 패턴, 주소 최소 길이)
+    3. 주문번호 생성: 'VF-' + 오늘날짜(YYYYMMDD) + '-' + 4자리 랜덤숫자 + 밀리초 타임스탬프 뒷 3자리
+    4. orders 테이블에 INSERT (status='PAID', paid_at=now())
+    5. order_items INSERT (상품명, 색상, 사이즈, 가격 스냅샷)
+    6. product_options.stock 차감 — 반드시 조건부 UPDATE 사용:
+       UPDATE ... SET stock = stock - 수량 WHERE id = 옵션ID AND stock >= 수량
+       영향받은 행이 0개면 "방금 재고가 소진되었습니다" 에러로 롤백 처리
+    7. carts 아이템 DELETE
+    8. /order/complete/<order_id> 리다이렉트
+    기술: service_role 키(admin_client)로 재고 차감 (RLS 우회)
     """
-    cart = _get_cart()
-    if not cart:
-        flash("주문할 상품이 없습니다.", "error")
-        return redirect(url_for("main.index"))
-
+    import re
     import time
-    buyer_name = request.form.get("buyer_name") or "구매자"
-    buyer_phone = request.form.get("buyer_phone") or ""
-    address = request.form.get("address") or ""
-    address_detail = request.form.get("address_detail") or ""
-    payment_method = request.form.get("payment_method") or "신용/체크카드"
-    coupon_code = request.form.get("coupon_code") or ""
+    import random
+    import datetime
 
-    is_logged_in = bool(session.get("user") or session.get("user_id"))
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("로그인이 필요한 서비스입니다.", "error")
+        return redirect(url_for("auth.login"))
+
+    # 1. 장바구니 조회 + 재고 확인 (재고 부족 시 에러, 처리 중단, 아무 것도 쓰지 않음)
+    items, total_price = _get_cart_items_and_total(user_id)
+    if not items:
+        flash("장바구니가 비어 있습니다.", "info")
+        return redirect(url_for("main.cart_page"))
+
+    admin_client = get_admin_client() or supabase
+
+    # 각 아이템별 옵션의 최신 재고 조회 및 요청 수량 대비 확인
+    for it in items:
+        opt_id = it.get("option_id")
+        qty = int(it.get("quantity", 1))
+        current_stock = int(it.get("stock", 0))
+
+        if opt_id and admin_client and _is_valid_uuid(opt_id):
+            try:
+                opt_check = (
+                    admin_client.table("product_options")
+                    .select("stock, stock_quantity")
+                    .eq("id", opt_id)
+                    .maybe_single()
+                    .execute()
+                )
+                if opt_check and opt_check.data:
+                    val = (
+                        opt_check.data.get("stock")
+                        if opt_check.data.get("stock") is not None
+                        else opt_check.data.get("stock_quantity", 0)
+                    )
+                    current_stock = int(val or 0)
+            except Exception as e:
+                print(f"[재고 사전 확인 오류] {e}", file=sys.stderr)
+
+        # 품절 또는 재고 부족 확인 시 처리 중단 및 에러 반환
+        if current_stock <= 0:
+            flash("품절된 상품이 있어 주문할 수 없습니다", "danger")
+            return redirect(url_for("main.cart_page"))
+        if qty > current_stock:
+            prod_name = it.get("name") or "상품"
+            flash(f"[{prod_name}] 재고가 부족합니다 (현재 재고: {current_stock}개)", "danger")
+            return redirect(url_for("main.cart_page"))
+
+    # 2. 배송지 입력값 서버 측 재검증(휴대폰 번호 패턴, 주소 최소 길이)
+    recipient_name = (
+        request.form.get("recipient_name")
+        or request.form.get("buyer_name")
+        or ""
+    ).strip()
+    recipient_phone = (
+        request.form.get("recipient_phone")
+        or request.form.get("buyer_phone")
+        or ""
+    ).strip()
+    shipping_address = (
+        request.form.get("shipping_address")
+        or request.form.get("address")
+        or ""
+    ).strip()
+    shipping_address_detail = (
+        request.form.get("shipping_address_detail")
+        or request.form.get("address_detail")
+        or ""
+    ).strip()
+    delivery_request = (
+        request.form.get("delivery_request")
+        or request.form.get("shipping_message")
+        or request.form.get("memo")
+        or ""
+    ).strip()
+    postal_code = (request.form.get("postal_code") or "06000").strip()
+    payment_method = request.form.get("payment_method") or "신용/체크카드"
+    coupon_code = (request.form.get("coupon_code") or "").strip()
+
+    # 이미 사용된 쿠폰인지 검증 (재사용 방지)
+    used_coupons = _get_user_used_coupons(user_id)
+    if coupon_code and coupon_code in used_coupons:
+        coupon_code = ""
+
+    if not recipient_name:
+        flash("수령인 이름을 입력해주세요.", "danger")
+        return redirect(url_for("main.checkout_page"))
+
+    # 휴대폰 번호 010-0000-0000 패턴 검증
+    if not re.match(r"^010-\d{4}-\d{4}$", recipient_phone):
+        flash("휴대폰 번호는 010-0000-0000 형식이어야 합니다.", "danger")
+        return redirect(url_for("main.checkout_page"))
+
+    # 배송 주소 최소 5자 이상 검증
+    if len(shipping_address) < 5:
+        flash("배송 주소는 최소 5자 이상이어야 합니다.", "danger")
+        return redirect(url_for("main.checkout_page"))
+
+    # 금액 계산 (배송비, 쿠폰 할인)
+    shipping_fee = 0 if total_price >= 30000 else 3000
+    discount_amount = 0
+    if coupon_code == "WELCOME15":
+        discount_amount = int((total_price * 0.15) // 10 * 10)
+    elif coupon_code == "VIBE10":
+        discount_amount = int((total_price * 0.10) // 10 * 10)
+
+    final_amount = max(0, total_price - discount_amount) + shipping_fee
+
+    # 3. 주문번호 생성: 'VF-' + 오늘날짜(YYYYMMDD) + '-' + 4자리 랜덤숫자 + 밀리초 타임스탬프 뒷 3자리
+    now = datetime.datetime.now(datetime.timezone.utc)
+    date_str = now.strftime("%Y%m%d")
+    random_4digit = f"{random.randint(0, 9999):04d}"
+    millis_last3 = f"{int(time.time() * 1000) % 1000:03d}"
+    order_number = f"VF-{date_str}-{random_4digit}{millis_last3}"
+
+    order_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_iso = now.isoformat()
+
+    inserted_order_id = None
+    deducted_options = []  # 롤백 복구용 리스트: [(opt_id, qty)]
 
     try:
-        total_price = int(request.form.get("total_price") or 0)
-        discount_amount = int(request.form.get("discount_amount") or 0)
-        shipping_fee = int(request.form.get("shipping_fee") or 0)
-        final_amount = int(request.form.get("final_amount") or 0)
-    except ValueError:
-        total_price = sum(int(item.get("price", 0)) * int(item.get("quantity", 1)) for item in cart.values())
-        shipping_fee = 0 if total_price >= 30000 else 3000
-        discount_amount = 0
-        final_amount = total_price + shipping_fee
+        # 4. orders 테이블에 INSERT (status='PAID', paid_at=now())
+        # DB 제약조건(CHECK status IN ('PENDING', 'PAID', ...)) 호환을 위해 'PAID' 대문자 저장
+        if admin_client and _is_valid_uuid(user_id):
+            order_row = {
+                "order_number": order_number,
+                "user_id": user_id,
+                "status": "PAID",
+                "total_amount": total_price,
+                "discount_amount": discount_amount,
+                "shipping_fee": shipping_fee,
+                "final_amount": final_amount,
+                "recipient_name": recipient_name,
+                "recipient_phone": recipient_phone,
+                "postal_code": postal_code,
+                "shipping_address": shipping_address,
+                "shipping_address_detail": shipping_address_detail,
+                "delivery_request": delivery_request,
+                "paid_at": now_iso
+            }
+            order_res = admin_client.table("orders").insert(order_row).execute()
+            if not order_res or not order_res.data:
+                raise RuntimeError("주문 테이블 생성 실패")
+            inserted_order_id = order_res.data[0].get("id")
 
-    # 비로그인 상태에서 쿠폰 적용 시도 시 할인 무효화
-    if not is_logged_in and discount_amount > 0:
-        discount_amount = 0
-        coupon_code = ""
-        final_amount = total_price + shipping_fee
+            # 5. order_items INSERT (상품명, 색상, 사이즈, 가격 스냅샷)
+            order_items_rows = []
+            for it in items:
+                opt_color = it.get("color") or ""
+                opt_size = it.get("size") or ""
+                opt_label = it.get("option") or "기본"
+                if opt_color and opt_size:
+                    option_snapshot = f"{opt_color}/{opt_size}"
+                else:
+                    option_snapshot = opt_label
 
-    # 고유 주문번호 생성 (예: ORD-20260928-123456)
-    order_id = f"ORD-{time.strftime('%Y%m%d')}-{int(time.time() * 1000) % 1000000:06d}"
-    order_time = time.strftime('%Y-%m-%d %H:%M:%S')
+                order_items_rows.append({
+                    "order_id": inserted_order_id,
+                    "product_id": it.get("id"),
+                    "option_id": it.get("option_id"),
+                    "product_name": it.get("name") or "상품",
+                    "option_name": option_snapshot,
+                    "price": it.get("price", 0),
+                    "quantity": it.get("quantity", 1),
+                    "subtotal": it.get("subtotal", 0)
+                })
 
+            if order_items_rows:
+                items_res = admin_client.table("order_items").insert(order_items_rows).execute()
+                if not items_res or not items_res.data:
+                    raise RuntimeError("주문 상세 아이템 생성 실패")
+
+            # 6. product_options.stock 차감 — 반드시 조건부 UPDATE 사용:
+            # UPDATE ... SET stock = stock - 수량 WHERE id = 옵션ID AND stock >= 수량
+            # 영향받은 행이 0개면 "방금 재고가 소진되었습니다" 에러로 롤백 처리
+            for it in items:
+                opt_id = it.get("option_id")
+                qty = int(it.get("quantity", 1))
+                if opt_id and _is_valid_uuid(opt_id):
+                    # 현재 재고 조회
+                    cur_res = (
+                        admin_client.table("product_options")
+                        .select("stock, stock_quantity")
+                        .eq("id", opt_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    if not cur_res or not cur_res.data:
+                        raise ValueError("방금 재고가 소진되었습니다")
+
+                    cur_stock = (
+                        cur_res.data.get("stock")
+                        if cur_res.data.get("stock") is not None
+                        else cur_res.data.get("stock_quantity", 0)
+                    )
+                    cur_stock = int(cur_stock or 0)
+                    if cur_stock < qty:
+                        raise ValueError("방금 재고가 소진되었습니다")
+
+                    new_stock = cur_stock - qty
+
+                    # 조건부 UPDATE: WHERE id = opt_id AND stock >= qty
+                    update_res = (
+                        admin_client.table("product_options")
+                        .update({"stock": new_stock, "stock_quantity": new_stock})
+                        .eq("id", opt_id)
+                        .gte("stock", qty)
+                        .execute()
+                    )
+
+                    # 영향받은 행이 0개면 경쟁 상태로 다른 주문에 의해 재고가 소진된 것이므로 롤백
+                    if not update_res or not update_res.data or len(update_res.data) == 0:
+                        raise ValueError("방금 재고가 소진되었습니다")
+
+                    deducted_options.append((opt_id, qty))
+
+            # 7. carts 아이템 DELETE
+            admin_client.table("carts").delete().eq("user_id", user_id).execute()
+
+        else:
+            # 테스트 환경 또는 mock DB 폴백
+            inserted_order_id = f"test-{order_number}"
+
+    except ValueError as ve:
+        # 재고 소진 등으로 인한 롤백 처리
+        err_msg = str(ve)
+        print(f"[주문 처리 중 롤백 발생] {err_msg}", file=sys.stderr)
+        # 차감했던 재고 원복
+        if admin_client:
+            for opt_id, qty in deducted_options:
+                try:
+                    cur_res = (
+                        admin_client.table("product_options")
+                        .select("stock, stock_quantity")
+                        .eq("id", opt_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    if cur_res and cur_res.data:
+                        cur_val = cur_res.data.get("stock") or 0
+                        restored = int(cur_val) + qty
+                        admin_client.table("product_options").update({
+                            "stock": restored,
+                            "stock_quantity": restored
+                        }).eq("id", opt_id).execute()
+                except Exception as restore_err:
+                    print(f"[재고 롤백 실패] {restore_err}", file=sys.stderr)
+
+            # 생성했던 orders 레코드 삭제 (ON DELETE CASCADE로 order_items도 함께 삭제됨)
+            if inserted_order_id and _is_valid_uuid(inserted_order_id):
+                try:
+                    admin_client.table("orders").delete().eq("id", inserted_order_id).execute()
+                except Exception as del_err:
+                    print(f"[주문 롤백 삭제 실패] {del_err}", file=sys.stderr)
+
+        flash("방금 재고가 소진되었습니다", "danger")
+        return redirect(url_for("main.cart_page"))
+
+    except Exception as ex:
+        print(f"[주문 생성 오류] {ex}", file=sys.stderr)
+        # 롤백 처리
+        if admin_client:
+            for opt_id, qty in deducted_options:
+                try:
+                    cur_res = admin_client.table("product_options").select("stock").eq("id", opt_id).maybe_single().execute()
+                    if cur_res and cur_res.data:
+                        restored = int(cur_res.data.get("stock") or 0) + qty
+                        admin_client.table("product_options").update({"stock": restored, "stock_quantity": restored}).eq("id", opt_id).execute()
+                except Exception:
+                    pass
+            if inserted_order_id and _is_valid_uuid(inserted_order_id):
+                try:
+                    admin_client.table("orders").delete().eq("id", inserted_order_id).execute()
+                except Exception:
+                    pass
+
+        flash("주문 처리 중 오류가 발생했습니다. 다시 시도해주세요.", "danger")
+        return redirect(url_for("main.checkout_page"))
+
+    # 세션 장바구니 비우기 및 주문 정보 저장
+    session["cart"] = {}
     order_info = {
-        "order_id": order_id,
-        "created_at": order_time,
-        "buyer_name": buyer_name,
-        "buyer_phone": buyer_phone,
-        "address": address,
-        "address_detail": address_detail,
+        "id": inserted_order_id,
+        "order_id": order_number,
+        "order_number": order_number,
+        "created_at": order_time_str,
+        "buyer_name": recipient_name,
+        "buyer_phone": recipient_phone,
+        "address": shipping_address,
+        "address_detail": shipping_address_detail,
+        "delivery_request": delivery_request,
         "payment_method": payment_method,
         "coupon_code": coupon_code,
         "total_price": total_price,
         "discount_amount": discount_amount,
         "shipping_fee": shipping_fee,
         "final_amount": final_amount,
-        "item_count": sum(int(item.get("quantity", 1)) for item in cart.values())
+        "item_count": sum(int(it.get("quantity", 1)) for it in items),
+        "items": items
     }
-
-    # 주문 완료 후 장바구니 비우기
-    session["cart"] = {}
     session["last_order"] = order_info
     session.modified = True
+
+    # 결제에 사용된 쿠폰은 사라지게(사용 완료 처리)
+    if coupon_code:
+        _mark_coupon_as_used(coupon_code, user_id)
+
+    # 8. /order/complete/<order_id> 리다이렉트
+    return redirect(url_for("main.order_complete", order_id=inserted_order_id or order_number))
+
+
+@main_bp.route("/order/complete/<order_id>", methods=["GET"])
+@login_required
+def order_complete(order_id):
+    """
+    [GET /order/complete/<order_id>]
+    - 주문 완료 결과 화면 표시
+    - 본인 주문이 맞는지 엄격히 확인 (다른 사용자의 order_id 접근 차단)
+    - 주문번호, 배송지, 주문 상품 목록, 결제 금액 표시
+    - 마이페이지로 / 쇼핑 계속하기 버튼 제공
+    """
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("로그인이 필요한 서비스입니다.", "error")
+        return redirect(url_for("auth.login"))
+
+    admin_client = get_admin_client() or supabase
+    order_info = None
+
+    # 1. DB에서 해당 order_id / order_number 조회
+    if admin_client and _is_valid_uuid(user_id):
+        try:
+            # 먼저 주문 존재 여부 및 소유자 확인 (다른 사용자의 order 접근 차단 목적)
+            base_query = admin_client.table("orders").select("*, order_items(*)")
+            if _is_valid_uuid(order_id):
+                base_query = base_query.eq("id", order_id)
+            else:
+                base_query = base_query.eq("order_number", order_id)
+
+            res = base_query.maybe_single().execute()
+            if res and res.data:
+                o = res.data
+                order_owner_id = str(o.get("user_id"))
+                # 본인 주문이 아니면 접근 차단 (403/리다이렉트)
+                if order_owner_id != str(user_id):
+                    flash("다른 사용자의 주문 정보에는 접근할 수 없습니다.", "danger")
+                    return redirect(url_for("main.mypage"))
+
+                created_dt = o.get("created_at") or ""
+                created_formatted = created_dt.replace("T", " ")[:19] if created_dt else ""
+
+                order_items_raw = o.get("order_items") or []
+                order_items = []
+                for item in order_items_raw:
+                    price_val = int(item.get("price") or 0)
+                    subtotal_val = int(item.get("subtotal") or 0)
+                    prod_name = item.get("product_name") or "상품"
+                    thumbnail_url = LOCAL_IMAGE_MAP.get(prod_name) or f"https://picsum.photos/seed/vibe_{item.get('product_id')}/600/750"
+
+                    order_items.append({
+                        "id": item.get("id"),
+                        "product_id": item.get("product_id"),
+                        "product_name": prod_name,
+                        "option_name": item.get("option_name") or "기본",
+                        "price": price_val,
+                        "price_formatted": f"{price_val:,}원",
+                        "quantity": int(item.get("quantity") or 1),
+                        "subtotal": subtotal_val,
+                        "subtotal_formatted": f"{subtotal_val:,}원",
+                        "thumbnail_url": thumbnail_url
+                    })
+
+                total_amount = int(o.get("total_amount") or 0)
+                discount_amount = int(o.get("discount_amount") or 0)
+                shipping_fee = int(o.get("shipping_fee") or 0)
+                final_amount = int(o.get("final_amount") or 0)
+
+                order_info = {
+                    "id": o.get("id"),
+                    "order_id": o.get("order_number"),
+                    "order_number": o.get("order_number"),
+                    "created_at": created_formatted,
+                    "buyer_name": o.get("recipient_name"),
+                    "buyer_phone": o.get("recipient_phone"),
+                    "shipping_address": o.get("shipping_address"),
+                    "shipping_address_detail": o.get("shipping_address_detail") or "",
+                    "delivery_request": o.get("delivery_request") or "",
+                    "payment_method": "신용/체크카드",
+                    "coupon_code": "",
+                    "total_amount": total_amount,
+                    "total_price": total_amount,
+                    "total_amount_formatted": f"{total_amount:,}원",
+                    "discount_amount": discount_amount,
+                    "discount_amount_formatted": f"{discount_amount:,}원",
+                    "shipping_fee": shipping_fee,
+                    "shipping_fee_formatted": f"{shipping_fee:,}원" if shipping_fee > 0 else "무료배송",
+                    "final_amount": final_amount,
+                    "final_amount_formatted": f"{final_amount:,}원",
+                    "order_items": order_items,
+                    "items": order_items,
+                    "items_count": len(order_items)
+                }
+        except Exception as e:
+            print(f"[order_complete 조회 오류] {e}", file=sys.stderr)
+
+    # 2. DB 조회 결과가 없는 경우(테스트 환경 또는 세션 주문) 세션 last_order 확인 및 본인 검증
+    if not order_info and session.get("last_order"):
+        lo = session.get("last_order")
+        # 해당 주문 식별자와 일치하는지 확인
+        if str(lo.get("id")) == str(order_id) or str(lo.get("order_id")) == str(order_id) or str(lo.get("order_number")) == str(order_id):
+            items_raw = lo.get("items") or lo.get("order_items") or []
+            order_items = []
+            for item in items_raw:
+                price_val = int(item.get("price") or 0)
+                subtotal_val = int(item.get("subtotal") or 0)
+                prod_name = item.get("name") or item.get("product_name") or "상품"
+                thumbnail_url = item.get("thumbnail_url") or LOCAL_IMAGE_MAP.get(prod_name) or f"https://picsum.photos/seed/vibe_{item.get('id')}/600/750"
+                order_items.append({
+                    "id": item.get("id"),
+                    "product_id": item.get("id") or item.get("product_id"),
+                    "product_name": prod_name,
+                    "option_name": item.get("option") or item.get("option_name") or "기본",
+                    "price": price_val,
+                    "price_formatted": item.get("price_formatted") or f"{price_val:,}원",
+                    "quantity": int(item.get("quantity") or 1),
+                    "subtotal": subtotal_val,
+                    "subtotal_formatted": item.get("subtotal_formatted") or f"{subtotal_val:,}원",
+                    "thumbnail_url": thumbnail_url
+                })
+
+            total_amount = int(lo.get("total_price") or lo.get("total_amount") or 0)
+            discount_amount = int(lo.get("discount_amount") or 0)
+            shipping_fee = int(lo.get("shipping_fee") or 0)
+            final_amount = int(lo.get("final_amount") or 0)
+
+            order_info = {
+                "id": lo.get("id"),
+                "order_id": lo.get("order_number") or lo.get("order_id"),
+                "order_number": lo.get("order_number") or lo.get("order_id"),
+                "created_at": lo.get("created_at"),
+                "buyer_name": lo.get("buyer_name") or lo.get("recipient_name"),
+                "buyer_phone": lo.get("buyer_phone") or lo.get("recipient_phone"),
+                "shipping_address": lo.get("address") or lo.get("shipping_address"),
+                "shipping_address_detail": lo.get("address_detail") or lo.get("shipping_address_detail") or "",
+                "delivery_request": lo.get("delivery_request") or "",
+                "payment_method": lo.get("payment_method") or "신용/체크카드",
+                "coupon_code": lo.get("coupon_code") or "",
+                "total_amount": total_amount,
+                "total_price": total_amount,
+                "total_amount_formatted": f"{total_amount:,}원",
+                "discount_amount": discount_amount,
+                "discount_amount_formatted": f"{discount_amount:,}원",
+                "shipping_fee": shipping_fee,
+                "shipping_fee_formatted": f"{shipping_fee:,}원" if shipping_fee > 0 else "무료배송",
+                "final_amount": final_amount,
+                "final_amount_formatted": f"{final_amount:,}원",
+                "order_items": order_items,
+                "items": order_items,
+                "items_count": len(order_items)
+            }
+
+    if not order_info:
+        flash("주문 정보를 찾을 수 없습니다.", "warning")
+        return redirect(url_for("main.mypage"))
 
     return render_template(
         "checkout_success.html",
@@ -1151,7 +1852,7 @@ def mypage():
     auth_user = None
 
     # Supabase Auth 사용자 정보 조회
-    if admin_client:
+    if admin_client and user_id and _is_valid_uuid(user_id):
         try:
             user_resp = admin_client.auth.admin.get_user_by_id(user_id)
             if user_resp and user_resp.user:
@@ -1160,7 +1861,7 @@ def mypage():
             print(f"[마이페이지 Auth 조회 알림] {e}", file=sys.stderr)
 
     # Supabase profiles 테이블에서 회원 정보 조회
-    if admin_client:
+    if admin_client and user_id and _is_valid_uuid(user_id):
         try:
             res = admin_client.table("profiles").select("*").eq("id", user_id).maybe_single().execute()
             if res and res.data:
@@ -1295,10 +1996,134 @@ def mypage():
         "is_email_user": is_email_user
     }
 
+    # 주문 내역(orders) 및 주문 아이템(order_items) 조회
+    orders_list = []
+    if admin_client and user_id and _is_valid_uuid(user_id):
+        try:
+            orders_res = (
+                admin_client.table("orders")
+                .select("*, order_items(*)")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            for o in (orders_res.data or []):
+                created_dt = o.get("created_at") or ""
+                # 날짜 표시 포맷팅
+                created_formatted = created_dt.replace("T", " ")[:19] if created_dt else ""
+                
+                # 주문 상태 한국어 매핑
+                status_raw = o.get("status", "PAID")
+                status_map = {
+                    "PENDING": ("결제 대기", "secondary"),
+                    "PAID": ("결제 완료", "success"),
+                    "PREPARING": ("배송 준비중", "info"),
+                    "SHIPPED": ("배송중", "primary"),
+                    "DELIVERED": ("배송 완료", "dark"),
+                    "CANCELLED": ("주문 취소", "danger"),
+                    "REFUNDED": ("환불 완료", "warning"),
+                }
+                status_label, status_badge_class = status_map.get(status_raw, (status_raw, "secondary"))
+
+                order_items_raw = o.get("order_items") or []
+                order_items = []
+                for item in order_items_raw:
+                    price_val = int(item.get("price") or 0)
+                    subtotal_val = int(item.get("subtotal") or 0)
+                    prod_name = item.get("product_name") or "상품"
+                    thumbnail_url = LOCAL_IMAGE_MAP.get(prod_name) or f"https://picsum.photos/seed/vibe_{item.get('product_id')}/600/750"
+
+                    order_items.append({
+                        "id": item.get("id"),
+                        "product_id": item.get("product_id"),
+                        "product_name": prod_name,
+                        "option_name": item.get("option_name") or "기본",
+                        "price": price_val,
+                        "price_formatted": f"{price_val:,}원",
+                        "quantity": int(item.get("quantity") or 1),
+                        "subtotal": subtotal_val,
+                        "subtotal_formatted": f"{subtotal_val:,}원",
+                        "thumbnail_url": thumbnail_url
+                    })
+
+                total_amount = int(o.get("total_amount") or 0)
+                discount_amount = int(o.get("discount_amount") or 0)
+                shipping_fee = int(o.get("shipping_fee") or 0)
+                final_amount = int(o.get("final_amount") or 0)
+
+                orders_list.append({
+                    "id": o.get("id"),
+                    "order_number": o.get("order_number"),
+                    "status": status_raw,
+                    "status_label": status_label,
+                    "status_badge_class": status_badge_class,
+                    "created_at": created_formatted,
+                    "recipient_name": o.get("recipient_name"),
+                    "recipient_phone": o.get("recipient_phone"),
+                    "shipping_address": o.get("shipping_address"),
+                    "shipping_address_detail": o.get("shipping_address_detail") or "",
+                    "delivery_request": o.get("delivery_request") or "",
+                    "total_amount": total_amount,
+                    "total_amount_formatted": f"{total_amount:,}원",
+                    "discount_amount": discount_amount,
+                    "discount_amount_formatted": f"{discount_amount:,}원",
+                    "shipping_fee": shipping_fee,
+                    "shipping_fee_formatted": f"{shipping_fee:,}원" if shipping_fee > 0 else "무료배송",
+                    "final_amount": final_amount,
+                    "final_amount_formatted": f"{final_amount:,}원",
+                    "order_items": order_items,
+                    "items_count": len(order_items)
+                })
+        except Exception as e:
+            print(f"[마이페이지 orders 조회 오류] {e}", file=sys.stderr)
+
+    # DB에 아직 주문이 없거나 비회원/세션 기반일 경우 session['last_order'] 보완 연동
+    if not orders_list and session.get("last_order"):
+        lo = session.get("last_order")
+        last_items = []
+        for it in (lo.get("items") or []):
+            last_items.append({
+                "id": it.get("cart_id"),
+                "product_id": it.get("id"),
+                "product_name": it.get("name") or "상품",
+                "option_name": it.get("option") or "기본",
+                "price": it.get("price", 0),
+                "price_formatted": it.get("price_formatted", f"{it.get('price', 0):,}원"),
+                "quantity": it.get("quantity", 1),
+                "subtotal": it.get("subtotal", 0),
+                "subtotal_formatted": it.get("subtotal_formatted", f"{it.get('subtotal', 0):,}원"),
+                "thumbnail_url": it.get("thumbnail_url")
+            })
+
+        orders_list.append({
+            "id": lo.get("order_id"),
+            "order_number": lo.get("order_id"),
+            "status": "PAID",
+            "status_label": "결제 완료",
+            "status_badge_class": "success",
+            "created_at": lo.get("created_at"),
+            "recipient_name": lo.get("buyer_name"),
+            "recipient_phone": lo.get("buyer_phone"),
+            "shipping_address": lo.get("address"),
+            "shipping_address_detail": lo.get("address_detail") or "",
+            "delivery_request": lo.get("delivery_request") or "",
+            "total_amount": lo.get("total_price", 0),
+            "total_amount_formatted": f"{lo.get('total_price', 0):,}원",
+            "discount_amount": lo.get("discount_amount", 0),
+            "discount_amount_formatted": f"{lo.get('discount_amount', 0):,}원",
+            "shipping_fee": lo.get("shipping_fee", 0),
+            "shipping_fee_formatted": f"{lo.get('shipping_fee', 0):,}원" if lo.get("shipping_fee", 0) > 0 else "무료배송",
+            "final_amount": lo.get("final_amount", 0),
+            "final_amount_formatted": f"{lo.get('final_amount', 0):,}원",
+            "order_items": last_items,
+            "items_count": len(last_items)
+        })
+
     return render_template(
         "mypage.html",
         brand_name="VIBE-FASHION",
         profile=profile_view,
+        orders=orders_list,
         user=session_user,
         is_email_user=is_email_user
     )

@@ -66,15 +66,33 @@
                         </button>
                     </div>
 
+                    <!-- 관리자 계정 로그인 시 관리자 대시보드 바로가기 아이콘/버튼 -->
+                    {% if is_admin %}
+                    <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-warning btn-sm d-flex align-items-center gap-1 px-2 px-sm-3 fw-bold shadow-sm" title="관리자 대시보드 바로가기">
+                        <i class="bi bi-speedometer2 fs-6"></i>
+                        <span class="d-none d-md-inline small">관리자 대시보드</span>
+                    </a>
+                    {% endif %}
+
                     <!-- 로그인 / 회원가입 or 사용자 프로필 -->
                     {% if session.get('user') %}
                     <div class="dropdown">
                         <button class="btn btn-outline-light btn-sm dropdown-toggle d-flex align-items-center gap-1 px-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-person-circle text-warning"></i>
                             <span class="d-none d-sm-inline small fw-semibold">{{ session.user.name }}님</span>
+                            {% if is_admin %}
+                            <span class="badge bg-warning text-dark extra-small ms-1">ADMIN</span>
+                            {% endif %}
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                             <li><h6 class="dropdown-header small">{{ session.user.email }}</h6></li>
+                            {% if is_admin %}
+                            <li>
+                                <a class="dropdown-item small fw-bold text-warning bg-dark rounded-2 mx-1 px-3 my-1" href="{{ url_for('admin.admin_dashboard') }}">
+                                    <i class="bi bi-speedometer2 me-2"></i>관리자 대시보드
+                                </a>
+                            </li>
+                            {% endif %}
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item small" href="{{ url_for('main.mypage') }}"><i class="bi bi-person me-2 text-primary"></i>마이페이지</a></li>
                             <li><a class="dropdown-item small" href="{{ url_for('main.wishlist_page') }}"><i class="bi bi-heart me-2 text-danger"></i>관심 상품</a></li>

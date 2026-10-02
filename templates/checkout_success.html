@@ -1,60 +1,130 @@
 {% extends "base.html" %}
 
-{% block title %}주문/결제 완료 | {{ brand_name }}{% endblock %}
+{% block title %}주문 완료 | {{ brand_name }}{% endblock %}
 
 {% block content %}
-<div class="container py-5 text-center">
+<div class="container py-5">
     <div class="row justify-content-center">
-        <div class="col-lg-6 col-md-8">
-            <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white">
-                <div class="mb-4">
+        <div class="col-lg-7 col-md-9">
+            <!-- 상단 성공 안내 카드 -->
+            <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white text-center mb-4">
+                <div class="mb-3">
                     <div class="bg-success-subtle text-success d-inline-flex p-3 rounded-circle mb-3">
                         <i class="bi bi-check2-circle display-4"></i>
                     </div>
-                    <h2 class="fw-black mb-1">주문 및 결제가 완료되었습니다!</h2>
-                    <p class="text-muted small">주문하신 상품이 안전하고 신속하게 배송될 예정입니다.</p>
+                    <h2 class="fw-black mb-1">주문이 정상적으로 완료되었습니다!</h2>
+                    <p class="text-muted small">주문하신 상품을 신속하고 안전하게 배송해 드리겠습니다.</p>
                 </div>
 
-                <!-- 주문 상세 정보 요약 -->
-                <div class="bg-light rounded-3 p-3 text-start mb-4">
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted small">주문 번호</span>
-                        <strong class="text-dark small">{{ order.order_id }}</strong>
+                <!-- 1. 주문 기본 정보 요약 -->
+                <div class="bg-light rounded-4 p-3 p-md-4 text-start mb-4 border">
+                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                        <span class="text-muted small fw-semibold">주문 번호</span>
+                        <strong class="text-dark fs-6" id="order-number-text">{{ order.order_number or order.order_id }}</strong>
                     </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted small">주문 일시</span>
+                    {% if order.created_at %}
+                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                        <span class="text-muted small fw-semibold">주문 일시</span>
                         <span class="text-dark small">{{ order.created_at }}</span>
                     </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted small">결제 수단</span>
+                    {% endif %}
+                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                        <span class="text-muted small fw-semibold">결제 수단</span>
                         <span class="text-dark small fw-semibold">{{ order.payment_method }}</span>
                     </div>
-                    {% if order.discount_amount > 0 %}
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted small">적용 쿠폰</span>
-                        <span class="text-danger small fw-bold">[{{ order.coupon_code }}] -{{ "{:,}".format(order.discount_amount) }}원</span>
+                    {% if order.discount_amount and order.discount_amount > 0 %}
+                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                        <span class="text-muted small fw-semibold">쿠폰 할인금액</span>
+                        <span class="text-danger small fw-bold">
+                            {% if order.coupon_code %}[{{ order.coupon_code }}] {% endif %}-{{ "{:,}".format(order.discount_amount) }}원
+                        </span>
                     </div>
                     {% endif %}
-                    <hr class="my-2">
-                    <div class="d-flex justify-content-between align-items-baseline">
-                        <span class="fw-bold">최종 결제 금액</span>
+                    {% if order.shipping_fee is defined %}
+                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                        <span class="text-muted small fw-semibold">배송비</span>
+                        <span class="small text-dark">{{ "{:,}".format(order.shipping_fee) }}원{% if order.shipping_fee == 0 %} (무료배송){% endif %}</span>
+                    </div>
+                    {% endif %}
+                    <div class="d-flex justify-content-between align-items-baseline pt-1">
+                        <span class="fw-bold fs-6">최종 결제 금액</span>
                         <span class="fs-4 fw-black text-danger">{{ "{:,}".format(order.final_amount) }}원</span>
                     </div>
                 </div>
 
-                <!-- 배송지 정보 요약 -->
-                <div class="border rounded-3 p-3 text-start mb-4">
-                    <h6 class="fw-bold mb-2 small text-muted"><i class="bi bi-truck me-1"></i>배송지 정보</h6>
-                    <p class="mb-1 small"><strong>수령인:</strong> {{ order.buyer_name }} ({{ order.buyer_phone }})</p>
-                    <p class="mb-0 small text-secondary"><strong>주소:</strong> {{ order.address }} {{ order.address_detail }}</p>
+                <!-- 2. 주문 상품 목록 -->
+                <div class="border rounded-4 p-3 p-md-4 text-start mb-4">
+                    <h6 class="fw-bold mb-3 d-flex align-items-center text-dark">
+                        <i class="bi bi-box-seam me-2 text-secondary"></i>주문 상품 목록 
+                        {% if order.order_items and order.order_items|length > 0 %}
+                        <span class="badge bg-secondary-subtle text-secondary ms-2 small">{{ order.order_items|length }}개</span>
+                        {% endif %}
+                    </h6>
+
+                    <div class="list-group list-group-flush">
+                        {% for item in order.order_items %}
+                        <div class="list-group-item px-0 py-3 d-flex align-items-center justify-content-between {% if not loop.last %}border-bottom{% else %}border-0{% endif %}">
+                            <div class="d-flex align-items-center gap-3">
+                                {% if item.thumbnail_url %}
+                                <img src="{{ item.thumbnail_url }}" alt="{{ item.product_name or item.name }}" class="rounded-3 shadow-sm object-fit-cover" style="width: 55px; height: 68px;">
+                                {% else %}
+                                <div class="bg-light rounded-3 d-flex align-items-center justify-content-center text-muted" style="width: 55px; height: 68px;">
+                                    <i class="bi bi-image"></i>
+                                </div>
+                                {% endif %}
+                                <div>
+                                    <h6 class="fw-bold mb-1 text-dark small">{{ item.product_name or item.name }}</h6>
+                                    <div class="text-muted extra-small mb-1">
+                                        옵션: <span class="fw-semibold text-secondary">{{ item.option_name or item.option or '기본' }}</span>
+                                    </div>
+                                    <span class="badge bg-light text-secondary border extra-small">
+                                        수량: {{ item.quantity }}개
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <span class="fw-bold text-dark small">
+                                    {{ item.subtotal_formatted if item.subtotal_formatted else ("{:,}".format(item.subtotal) + "원" if item.subtotal else "{:,}".format(item.price * item.quantity) + "원") }}
+                                </span>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="text-muted small py-2">주문 상품 정보가 없습니다.</div>
+                        {% endfor %}
+                    </div>
                 </div>
 
+                <!-- 3. 배송지 정보 -->
+                <div class="border rounded-4 p-3 p-md-4 text-start mb-4">
+                    <h6 class="fw-bold mb-3 text-dark d-flex align-items-center">
+                        <i class="bi bi-truck me-2 text-primary"></i>배송지 정보
+                    </h6>
+                    <div class="row g-2 extra-small text-secondary">
+                        <div class="col-sm-4 text-muted fw-semibold">수령인</div>
+                        <div class="col-sm-8 text-dark fw-bold">{{ order.buyer_name or order.recipient_name }}</div>
+
+                        <div class="col-sm-4 text-muted fw-semibold">연락처</div>
+                        <div class="col-sm-8 text-dark">{{ order.buyer_phone or order.recipient_phone }}</div>
+
+                        <div class="col-sm-4 text-muted fw-semibold">배송 주소</div>
+                        <div class="col-sm-8 text-dark">
+                            {{ order.address or order.shipping_address }} {{ order.address_detail or order.shipping_address_detail }}
+                        </div>
+
+                        {% if order.delivery_request %}
+                        <div class="col-sm-4 text-muted fw-semibold">배송 메모</div>
+                        <div class="col-sm-8 text-dark">{{ order.delivery_request }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- 4. 액션 버튼: "마이페이지로", "쇼핑 계속하기" -->
                 <div class="d-flex flex-column flex-sm-row gap-2 justify-content-center">
-                    <a href="{{ url_for('main.index') }}" class="btn btn-warning btn-lg fw-bold text-dark px-4">
-                        계속 쇼핑하기
+                    <a href="{{ url_for('main.mypage') }}" class="btn btn-outline-dark btn-lg fw-semibold px-4 py-3 d-flex align-items-center justify-content-center gap-2 rounded-3">
+                        <i class="bi bi-person-lines-fill"></i>마이페이지로
                     </a>
-                    <a href="{{ url_for('main.cart_page') }}" class="btn btn-outline-dark btn-lg fw-semibold px-4">
-                        장바구니 확인
+                    <a href="{{ url_for('main.index') }}" class="btn btn-warning btn-lg fw-bold text-dark px-4 py-3 d-flex align-items-center justify-content-center gap-2 shadow-sm rounded-3">
+                        <i class="bi bi-bag"></i>쇼핑 계속하기
                     </a>
                 </div>
             </div>

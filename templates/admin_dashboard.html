@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>관리자 대시보드 | {{ brand_name }}</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --admin-bg: #f8fafc;
+            --admin-dark: #0f172a;
+            --admin-card-border: #e2e8f0;
+        }
+        body {
+            background-color: var(--admin-bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: #1e293b;
+        }
+        .admin-navbar {
+            background-color: #0f172a;
+            border-bottom: 1px solid #1e293b;
+        }
+        .kpi-card {
+            border: 1px solid var(--admin-card-border);
+            border-radius: 1rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            background: #ffffff;
+        }
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.08);
+        }
+        .kpi-icon-box {
+            width: 48px;
+            height: 48px;
+            border-radius: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        .table-custom {
+            vertical-align: middle;
+            font-size: 0.875rem;
+        }
+        .table-custom thead th {
+            background-color: #f1f5f9;
+            color: #475569;
+            font-weight: 700;
+            white-space: nowrap;
+            border-bottom: 2px solid #cbd5e1;
+        }
+        .growth-badge-up {
+            color: #16a34a;
+            background: #dcfce7;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.2rem 0.5rem;
+            border-radius: 9999px;
+        }
+        .growth-badge-down {
+            color: #dc2626;
+            background: #fee2e2;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.2rem 0.5rem;
+            border-radius: 9999px;
+        }
+        .growth-badge-zero {
+            color: #64748b;
+            background: #f1f5f9;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.2rem 0.5rem;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 1. 관리자 상단 네비게이션 바 -->
+    <nav class="navbar navbar-expand-lg admin-navbar sticky-top navbar-dark shadow-sm py-2">
+        <div class="container-fluid px-4">
+            <a class="navbar-brand d-flex align-items-center gap-2 fw-black text-white" href="{{ url_for('admin.admin_dashboard') }}">
+                <i class="bi bi-lightning-charge-fill text-warning"></i>
+                <span>{{ brand_name }}</span>
+                <span class="badge bg-warning text-dark extra-small ms-1">ADMIN</span>
+            </a>
+
+            <div class="d-flex align-items-center gap-3">
+                <a href="{{ url_for('main.index') }}" target="_blank" class="btn btn-outline-light btn-sm rounded-pill px-3">
+                    <i class="bi bi-box-arrow-up-right me-1"></i>쇼핑몰 바로가기
+                </a>
+
+                <div class="dropdown">
+                    <button class="btn btn-dark btn-sm rounded-pill dropdown-toggle d-flex align-items-center gap-2 px-3 border border-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-person-circle text-warning fs-5"></i>
+                        <span class="small fw-semibold text-white">{{ session.get('user', {}).get('name', '최고관리자') }}</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                        <li><h6 class="dropdown-header small text-muted">{{ session.get('user', {}).get('email', 'admin@vibe-fashion.com') }}</h6></li>
+                        <li><span class="dropdown-item-text extra-small text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i>권한: System Admin</span></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item text-danger small fw-semibold" href="{{ url_for('admin.admin_logout') }}">
+                                <i class="bi bi-box-arrow-right me-2"></i>관리자 로그아웃
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 대시보드 본문 컨테이너 -->
+    <div class="container-fluid px-4 py-4">
+        <!-- 헤더 및 빠른 작업 버튼 -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+            <div>
+                <h3 class="fw-bold mb-1 text-dark d-flex align-items-center gap-2">
+                    <i class="bi bi-speedometer2 text-primary"></i>관리자 종합 대시보드
+                </h3>
+                <p class="text-muted small mb-0">
+                    실시간 주문 현황, 재고 현황 및 판매 분석을 한 화면에서 모니터링합니다. (기준일: {{ today_str }})
+                </p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-primary btn-sm rounded-3 shadow-sm px-3 fw-bold text-white" data-bs-toggle="modal" data-bs-target="#userManageModal">
+                    <i class="bi bi-people-fill me-1"></i>사용자(회원) 관리
+                </button>
+                <button type="button" class="btn btn-warning btn-sm rounded-3 shadow-sm px-3 fw-bold text-dark" data-bs-toggle="modal" data-bs-target="#stockManageModal">
+                    <i class="bi bi-boxes me-1"></i>상품 재고 관리
+                </button>
+                <button type="button" onclick="window.location.reload();" class="btn btn-outline-secondary btn-sm rounded-3 shadow-sm px-3">
+                    <i class="bi bi-arrow-clockwise me-1"></i>새로고침
+                </button>
+                <a href="{{ url_for('admin.export_orders_csv', buyer=search_buyer, product=search_product, date=filter_date, status=filter_status) }}" class="btn btn-success btn-sm rounded-3 shadow-sm px-3 fw-bold text-white">
+                    <i class="bi bi-file-earmark-excel me-1"></i>엑셀(CSV) 다운로드
+                </a>
+            </div>
+        </div>
+
+        <!-- 플래시 메시지 -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' or category == 'danger' else ('warning' if category == 'warning' else 'success') }} alert-dismissible fade show small py-2 px-3 mb-4 rounded-3 shadow-sm" role="alert">
+                    <i class="bi bi-info-circle me-1"></i>{{ message }}
+                    <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- 2. 상단 KPI 카드 6개 (오늘 기준) -->
+        <div class="row g-3 mb-4">
+            <!-- 1. 오늘 주문 건수 -->
+            <div class="col-6 col-lg-2">
+                <div class="card kpi-card p-3 shadow-sm h-100 border-start border-primary border-4">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="text-secondary small fw-semibold">오늘 주문 건수</span>
+                        <div class="kpi-icon-box bg-primary bg-opacity-10 text-primary">
+                            <i class="bi bi-cart-check-fill"></i>
+                        </div>
+                    </div>
+                    <h4 class="fw-black text-dark mb-2">{{ "{:,}".format(kpi.today_orders) }}<span class="fs-6 fw-normal text-muted ms-1">건</span></h4>
+                    <div class="d-flex align-items-center gap-1 extra-small">
+                        {% if kpi.today_orders_growth.startswith('+') %}
+                        <span class="growth-badge-up"><i class="bi bi-arrow-up-right me-1"></i>{{ kpi.today_orders_growth }}</span>
+                        {% elif kpi.today_orders_growth.startswith('-') %}
+                        <span class="growth-badge-down"><i class="bi bi-arrow-down-right me-1"></i>{{ kpi.today_orders_growth }}</span>
+                        {% else %}
+                        <span class="growth-badge-zero">{{ kpi.today_orders_growth }}</span>
+                        {% endif %}
+                        <span class="text-muted">전일 대비</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. 오늘 판매 수량 -->
+            <div class="col-6 col-lg-2">
+                <div class="card kpi-card p-3 shadow-sm h-100 border-start border-info border-4">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="text-secondary small fw-semibold">오늘 판매 수량</span>
+                        <div class="kpi-icon-box bg-info bg-opacity-10 text-info">
+                            <i class="bi bi-box-seam-fill"></i>
+                        </div>
+                    </div>
+                    <h4 class="fw-black text-dark mb-2">{{ "{:,}".format(kpi.today_qty) }}<span class="fs-6 fw-normal text-muted ms-1">개</span></h4>
+                    <div class="d-flex align-items-center gap-1 extra-small">
+                        {% if kpi.today_qty_growth.startswith('+') %}
+                        <span class="growth-badge-up"><i class="bi bi-arrow-up-right me-1"></i>{{ kpi.today_qty_growth }}</span>
+                        {% elif kpi.today_qty_growth.startswith('-') %}
+                        <span class="growth-badge-down"><i class="bi bi-arrow-down-right me-1"></i>{{ kpi.today_qty_growth }}</span>
+                        {% else %}
+                        <span class="growth-badge-zero">{{ kpi.today_qty_growth }}</span>
+                        {% endif %}
+                        <span class="text-muted">전일 대비</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. 오늘 매출액 -->
+            <div class="col-6 col-lg-2">
+                <div class="card kpi-card p-3 shadow-sm h-100 border-start border-success border-4">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="text-secondary small fw-semibold">오늘 매출액</span>
+                        <div class="kpi-icon-box bg-success bg-opacity-10 text-success">
+                            <i class="bi bi-cash-stack"></i>
+                        </div>
+                    </div>
+                    <h4 class="fw-black text-success mb-2">{{ kpi.today_sales_formatted }}</h4>
+                    <div class="d-flex align-items-center gap-1 extra-small">
+                        {% if kpi.today_sales_growth.startswith('+') %}
+                        <span class="growth-badge-up"><i class="bi bi-arrow-up-right me-1"></i>{{ kpi.today_sales_growth }}</span>
+                        {% elif kpi.today_sales_growth.startswith('-') %}
+                        <span class="growth-badge-down"><i class="bi bi-arrow-down-right me-1"></i>{{ kpi.today_sales_growth }}</span>
+                        {% else %}
+                        <span class="growth-badge-zero">{{ kpi.today_sales_growth }}</span>
+                        {% endif %}
+                        <span class="text-muted">전일 대비</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. 판매중 상품 수 -->
+            <div class="col-6 col-lg-2">
+                <div class="card kpi-card p-3 shadow-sm h-100 border-start border-dark border-4" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#userManageModal" title="클릭 시 사용자(회원) 관리 열기">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="text-secondary small fw-semibold">가입 회원 수</span>
+                        <div class="kpi-icon-box bg-dark bg-opacity-10 text-dark">
+                            <i class="bi bi-people-fill"></i>
+                        </div>
+                    </div>
+                    <h4 class="fw-black text-dark mb-2">{{ "{:,}".format(total_users or (users_list|length)) }}<span class="fs-6 fw-normal text-muted ms-1">명</span></h4>
+                    <div class="d-flex align-items-center gap-1 extra-small text-primary fw-semibold">
+                        <i class="bi bi-person-gear me-1"></i>클릭하여 회원 관리
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. 품절 상품 수 -->
+            <div class="col-6 col-lg-2">
+                <div class="card kpi-card p-3 shadow-sm h-100 border-start border-danger border-4" style="cursor: pointer;" onclick="openStockModalWithFilter('out_of_stock')" title="클릭 시 품절 상품 재고 관리 열기">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="text-secondary small fw-semibold">품절 상품 수</span>
+                        <div class="kpi-icon-box bg-danger bg-opacity-10 text-danger">
+                            <i class="bi bi-exclamation-octagon-fill"></i>
+                        </div>
+                    </div>
+                    <h4 class="fw-black text-danger mb-2">{{ "{:,}".format(kpi.out_of_stock_products) }}<span class="fs-6 fw-normal text-muted ms-1">개</span></h4>
+                    <div class="d-flex align-items-center gap-1 extra-small text-danger fw-semibold">
+                        <i class="bi bi-pencil-square me-1"></i>클릭하여 재고 수정
+                    </div>
+                </div>
+            </div>
+
+            <!-- 6. 재고 부족 상품 수 -->
+            <div class="col-6 col-lg-2">
+                <div class="card kpi-card p-3 shadow-sm h-100 border-start border-warning border-4" style="cursor: pointer;" onclick="openStockModalWithFilter('low_stock')" title="클릭 시 재고 부족 상품 관리 열기">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="text-secondary small fw-semibold">재고 부족 (1~10개)</span>
+                        <div class="kpi-icon-box bg-warning bg-opacity-10 text-warning">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                        </div>
+                    </div>
+                    <h4 class="fw-black text-warning text-dark mb-2">{{ "{:,}".format(kpi.low_stock_products) }}<span class="fs-6 fw-normal text-muted ms-1">개</span></h4>
+                    <div class="d-flex align-items-center gap-1 extra-small text-warning text-dark fw-semibold">
+                        <i class="bi bi-pencil-square me-1"></i>클릭하여 재고 수정
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 오늘 시간대별 차트 영역 (Chart.js) -->
+        <div class="row g-3 mb-4">
+            <!-- 오늘 시간대별 판매량 (Line Chart) -->
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+                            <i class="bi bi-graph-up-arrow text-primary"></i>오늘 시간대별 판매량 (개)
+                        </h6>
+                        <span class="badge bg-primary bg-opacity-10 text-primary small">Line Chart</span>
+                    </div>
+                    <div style="position: relative; height: 260px; width: 100%;">
+                        <canvas id="hourlyQuantityChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 오늘 시간대별 매출액 (Bar Chart) -->
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+                            <i class="bi bi-bar-chart-fill text-success"></i>오늘 시간대별 매출액 (원)
+                        </h6>
+                        <span class="badge bg-success bg-opacity-10 text-success small">Bar Chart</span>
+                    </div>
+                    <div style="position: relative; height: 260px; width: 100%;">
+                        <canvas id="hourlyRevenueChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. 관리자 핵심 현황 테이블 (가장 눈에 띄게 표시) -->
+        <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white border-top border-warning border-4">
+            <div class="card-header bg-white py-3 px-4 d-flex flex-wrap justify-content-between align-items-center gap-2 border-bottom">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-warning text-dark px-2 py-1 fw-bold">핵심 현황</span>
+                    <h5 class="fw-black mb-0 text-dark d-flex align-items-center">
+                        <i class="bi bi-star-fill text-warning me-2"></i>관리자 핵심 요약 현황
+                    </h5>
+                </div>
+                <span class="text-muted extra-small">주문자 및 상품별 당일 실적/재고 종합 뷰</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-custom mb-0">
+                    <thead>
+                        <tr>
+                            <th class="ps-4">주문자명</th>
+                            <th>수령인</th>
+                            <th>주문한 상품</th>
+                            <th class="text-center">색상</th>
+                            <th class="text-center">사이즈</th>
+                            <th class="text-center">주문수량</th>
+                            <th class="text-center">판매중 상품의 남은 재고</th>
+                            <th class="text-end">오늘 판매량</th>
+                            <th class="text-end pe-4">오늘 매출액</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows[:10] %}
+                        <tr>
+                            <td class="ps-4 fw-bold text-dark">
+                                <i class="bi bi-person-fill text-secondary me-1"></i>{{ row.buyer_name }}
+                            </td>
+                            <td class="fw-semibold text-secondary">
+                                <span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-truck me-1"></i>{{ row.recipient_name }}</span>
+                            </td>
+                            <td>
+                                <div class="fw-semibold text-dark">{{ row.product_name }}</div>
+                                <div class="d-flex align-items-center gap-1 mt-1 extra-small">
+                                    <span class="badge bg-secondary-subtle text-secondary border px-1">
+                                        <i class="bi bi-palette me-1"></i>{{ row.color }}
+                                    </span>
+                                    <span class="badge bg-secondary-subtle text-secondary border px-1">
+                                        <i class="bi bi-rulers me-1"></i>{{ row.size }}
+                                    </span>
+                                </div>
+                            </td>
+                            <td class="text-center"><span class="badge bg-light text-dark border fw-bold">{{ row.color }}</span></td>
+                            <td class="text-center"><span class="badge bg-light text-dark border fw-bold">{{ row.size }}</span></td>
+                            <td class="text-center fw-bold text-primary">{{ row.quantity }}개</td>
+                            <td class="text-center">
+                                <span class="badge bg-{{ row.stock_badge_class }} px-2 py-1 stock-badge-opt-{{ row.option_id }}">
+                                    {{ row.current_stock }}개 ({{ row.stock_status_text }})
+                                </span>
+                                {% if row.option_id %}
+                                <button type="button" class="btn btn-sm btn-light border py-0 px-1 ms-1 text-secondary" 
+                                        onclick="openQuickStockModal('{{ row.option_id }}', '{{ row.product_name }}', '{{ row.color }}', '{{ row.size }}', {{ row.current_stock }})"
+                                        title="재고 수량 수정">
+                                    <i class="bi bi-pencil-fill small text-dark"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                            <td class="text-end fw-bold text-secondary">{{ row.today_product_sales_qty }}개</td>
+                            <td class="text-end pe-4 fw-black text-danger">{{ row.today_product_sales_revenue_formatted }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center py-4 text-muted">
+                                <i class="bi bi-inbox d-block fs-3 mb-2"></i>표시할 핵심 현황 데이터가 없습니다.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 5. 주문 관리 테이블 및 검색/필터 영역 -->
+        <div class="card border-0 shadow-sm rounded-4 bg-white">
+            <div class="card-header bg-white py-3 px-4 border-bottom">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <h5 class="fw-bold mb-0 text-dark d-flex align-items-center">
+                        <i class="bi bi-receipt-cutoff text-primary me-2"></i>주문 관리 전체 내역
+                        <span class="badge bg-secondary-subtle text-secondary ms-2 small">총 {{ total_rows }}건</span>
+                    </h5>
+                    <!-- 재고 상태 범례 -->
+                    <div class="d-flex align-items-center gap-2 extra-small text-muted">
+                        <span class="fw-bold me-1">재고 상태 범례:</span>
+                        <span class="badge bg-danger">0개 품절</span>
+                        <span class="badge bg-warning text-dark">1~10개 품절임박</span>
+                        <span class="badge bg-success">11개 이상 여유</span>
+                    </div>
+                </div>
+
+                <!-- 검색 및 필터 폼 -->
+                <form method="GET" action="{{ url_for('admin.admin_dashboard') }}" class="row g-2 mt-2 pt-2 border-top">
+                    <!-- 주문자 및 수령인 검색 -->
+                    <div class="col-12 col-sm-6 col-md-3">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-light text-secondary"><i class="bi bi-person"></i></span>
+                            <input type="text" class="form-control" name="buyer" value="{{ search_buyer }}" placeholder="주문자/수령인명 검색">
+                        </div>
+                    </div>
+
+                    <!-- 상품명 검색 -->
+                    <div class="col-12 col-sm-6 col-md-3">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-light text-secondary"><i class="bi bi-bag"></i></span>
+                            <input type="text" class="form-control" name="product" value="{{ search_product }}" placeholder="상품명 검색">
+                        </div>
+                    </div>
+
+                    <!-- 날짜 검색 -->
+                    <div class="col-6 col-md-2">
+                        <input type="date" class="form-control form-control-sm" name="date" value="{{ filter_date }}">
+                    </div>
+
+                    <!-- 주문 상태 필터 -->
+                    <div class="col-6 col-md-2">
+                        <select class="form-select form-select-sm" name="status">
+                            <option value="ALL" {% if filter_status == 'ALL' %}selected{% endif %}>주문상태 전체</option>
+                            <option value="PAID" {% if filter_status == 'PAID' %}selected{% endif %}>결제완료</option>
+                            <option value="PREPARING" {% if filter_status == 'PREPARING' %}selected{% endif %}>배송준비</option>
+                            <option value="SHIPPED" {% if filter_status == 'SHIPPED' %}selected{% endif %}>배송중</option>
+                            <option value="DELIVERED" {% if filter_status == 'DELIVERED' %}selected{% endif %}>배송완료</option>
+                            <option value="CANCELLED" {% if filter_status == 'CANCELLED' %}selected{% endif %}>취소</option>
+                        </select>
+                    </div>
+
+                    <!-- 검색 및 초기화 버튼 -->
+                    <div class="col-12 col-md-2 d-flex gap-1">
+                        <button type="submit" class="btn btn-dark btn-sm flex-grow-1 fw-bold">
+                            <i class="bi bi-search me-1"></i>검색
+                        </button>
+                        <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-outline-secondary btn-sm" title="필터 초기화">
+                            <i class="bi bi-x-circle"></i>
+                        </a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 테이블 뷰 -->
+            <div class="table-responsive">
+                <table class="table table-hover table-custom mb-0">
+                    <thead>
+                        <tr>
+                            <th class="ps-4">주문번호</th>
+                            <th>주문일시</th>
+                            <th>주문자명</th>
+                            <th>수령인</th>
+                            <th>연락처</th>
+                            <th>배송지</th>
+                            <th>주문상품</th>
+                            <th class="text-center">색상</th>
+                            <th class="text-center">사이즈</th>
+                            <th class="text-center">주문수량</th>
+                            <th class="text-end">상품가격</th>
+                            <th class="text-end">주문금액</th>
+                            <th class="text-center">현재 재고</th>
+                            <th class="text-center pe-4">주문상태</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                        <tr>
+                            <td class="ps-4 fw-bold font-monospace text-dark small">{{ row.order_number }}</td>
+                            <td class="text-muted extra-small">{{ row.order_date }}</td>
+                            <td class="fw-semibold text-dark">{{ row.buyer_name }}</td>
+                            <td class="fw-bold text-primary">
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">
+                                    <i class="bi bi-person-check-fill me-1"></i>{{ row.recipient_name }}
+                                </span>
+                            </td>
+                            <td class="text-muted extra-small">{{ row.recipient_phone or row.buyer_phone }}</td>
+                            <td class="text-secondary extra-small text-truncate" style="max-width: 180px;" title="{{ row.shipping_address }}">
+                                {{ row.shipping_address or '-' }}
+                            </td>
+                            <td>
+                                <div class="fw-semibold text-dark">{{ row.product_name }}</div>
+                                <div class="d-flex align-items-center gap-1 mt-1 extra-small">
+                                    <span class="badge bg-secondary-subtle text-secondary border px-1">
+                                        <i class="bi bi-palette me-1"></i>{{ row.color }}
+                                    </span>
+                                    <span class="badge bg-secondary-subtle text-secondary border px-1">
+                                        <i class="bi bi-rulers me-1"></i>{{ row.size }}
+                                    </span>
+                                </div>
+                            </td>
+                            <td class="text-center"><span class="badge bg-light text-dark border fw-bold">{{ row.color }}</span></td>
+                            <td class="text-center"><span class="badge bg-light text-dark border fw-bold">{{ row.size }}</span></td>
+                            <td class="text-center fw-bold">{{ row.quantity }}</td>
+                            <td class="text-end text-secondary small">{{ row.price_formatted }}</td>
+                            <td class="text-end fw-bold text-dark small">{{ row.subtotal_formatted }}</td>
+                            <td class="text-center">
+                                <span class="badge bg-{{ row.stock_badge_class }} px-2 py-1 stock-badge-opt-{{ row.option_id }}">
+                                    {{ row.current_stock }}개
+                                </span>
+                                {% if row.option_id %}
+                                <button type="button" class="btn btn-sm btn-light border py-0 px-1 ms-1 text-secondary" 
+                                        onclick="openQuickStockModal('{{ row.option_id }}', '{{ row.product_name }}', '{{ row.color }}', '{{ row.size }}', {{ row.current_stock }})"
+                                        title="재고 수량 수정">
+                                    <i class="bi bi-pencil-fill small text-dark"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                            <td class="text-center pe-4">
+                                <span class="badge bg-{{ row.status_badge_class }} px-2 py-1">
+                                    {{ row.status_label }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="14" class="text-center py-5 text-muted">
+                                <i class="bi bi-search d-block fs-2 mb-2 text-secondary"></i>
+                                일치하는 주문 내역이 없습니다.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 6. 사용자(회원) 관리 섹션 -->
+        <div class="card border-0 shadow-sm rounded-4 bg-white mt-4">
+            <div class="card-header bg-white py-3 px-4 border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-primary px-2 py-1 fw-bold">회원 관리</span>
+                    <h5 class="fw-bold mb-0 text-dark d-flex align-items-center">
+                        <i class="bi bi-person-lines-fill text-primary me-2"></i>등록 사용자 및 권한 현황
+                        <span class="badge bg-secondary-subtle text-secondary ms-2 small">총 {{ users_list|length }}명</span>
+                    </h5>
+                </div>
+                <div class="input-group input-group-sm" style="max-width: 280px;">
+                    <span class="input-group-text bg-light text-secondary"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" id="userInlineSearch" placeholder="이름/이메일 검색..." oninput="filterUserInlineTable()">
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover table-custom mb-0" id="userInlineTable">
+                    <thead>
+                        <tr>
+                            <th class="ps-4">회원명</th>
+                            <th>이메일 계정</th>
+                            <th>연락처</th>
+                            <th class="text-center">권한(Role)</th>
+                            <th class="text-center">회원 등급</th>
+                            <th class="text-end">보유 포인트</th>
+                            <th class="text-end">총 결제금액</th>
+                            <th class="text-center">주문수</th>
+                            <th class="text-center">가입일</th>
+                            <th class="text-center pe-4">관리</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users_list %}
+                        <tr class="user-inline-row" data-name="{{ u.name | lower }}" data-email="{{ u.email | lower }}">
+                            <td class="ps-4 fw-bold text-dark">
+                                <i class="bi bi-person-circle text-secondary me-1"></i>{{ u.name }}
+                            </td>
+                            <td class="text-muted extra-small">{{ u.email }}</td>
+                            <td class="text-muted extra-small">{{ u.phone }}</td>
+                            <td class="text-center">
+                                <span class="badge bg-{{ u.role_badge_class }} px-2 py-1 user-role-badge-{{ u.id }}">
+                                    {{ u.role | upper }}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-{{ u.grade_badge_class }} px-2 py-1 user-grade-badge-{{ u.id }}">
+                                    {{ u.grade }}
+                                </span>
+                            </td>
+                            <td class="text-end fw-bold text-primary user-points-text-{{ u.id }}">
+                                {{ u.points_formatted }}
+                            </td>
+                            <td class="text-end fw-bold text-dark small">
+                                {{ u.total_spent_formatted }}
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-light text-dark border">{{ u.order_count }}건</span>
+                            </td>
+                            <td class="text-muted extra-small text-center">{{ u.created_at }}</td>
+                            <td class="text-center pe-4">
+                                <button type="button" class="btn btn-outline-dark btn-sm rounded-pill px-3 shadow-sm"
+                                        onclick="openUserEditModal('{{ u.id }}', '{{ u.name }}', '{{ u.email }}', '{{ u.phone }}', '{{ u.role }}', '{{ u.grade }}', {{ u.points }})">
+                                    <i class="bi bi-gear-fill me-1"></i>수정
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="10" class="text-center py-4 text-muted">등록된 회원이 없습니다.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Chart.js 렌더링 스크립트 -->
+    <script>
+        const chartLabels = {{ chart_labels | tojson }};
+        const hourlyQtyData = {{ chart_hourly_qty | tojson }};
+        const hourlyRevenueData = {{ chart_hourly_revenue | tojson }};
+
+        // 1. 오늘 시간대별 판매량 (Line Chart)
+        const ctxQty = document.getElementById('hourlyQuantityChart').getContext('2d');
+        new Chart(ctxQty, {
+            type: 'line',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: '판매 수량 (개)',
+                    data: hourlyQtyData,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 2.5,
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#3b82f6'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) { return ctx.parsed.y + '개 판매'; }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { stepSize: 1 }
+                    },
+                    x: {
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+
+        // 2. 오늘 시간대별 매출액 (Bar Chart)
+        const ctxRev = document.getElementById('hourlyRevenueChart').getContext('2d');
+        new Chart(ctxRev, {
+            type: 'bar',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: '매출액 (원)',
+                    data: hourlyRevenueData,
+                    backgroundColor: '#10b981',
+                    borderRadius: 4,
+                    hoverBackgroundColor: '#059669'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) { return ctx.parsed.y.toLocaleString() + '원'; }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                if (value >= 10000) {
+                                    return (value / 10000).toLocaleString() + '만원';
+                                }
+                                return value.toLocaleString() + '원';
+                            }
+                        }
+                    },
+                    x: {
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+    </script>
+
+    <!-- 토스트 알림 컨테이너 -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;">
+        <div id="stockToast" class="toast align-items-center text-white bg-dark border-0 shadow-lg rounded-3" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body d-flex align-items-center gap-2">
+                    <i class="bi bi-check-circle-fill text-success fs-5" id="stockToastIcon"></i>
+                    <span id="stockToastMessage" class="small fw-semibold">재고가 성공적으로 수정되었습니다.</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. 단일 옵션 빠른 재고 수정 모달 -->
+    <div class="modal fade" id="quickStockModal" tabindex="-1" aria-labelledby="quickStockModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content rounded-4 border-0 shadow-lg">
+                <div class="modal-header border-bottom py-3 px-4 bg-light">
+                    <h5 class="modal-title fw-bold text-dark d-flex align-items-center gap-2" id="quickStockModalLabel">
+                        <i class="bi bi-pencil-square text-warning"></i>재고 수량 수정
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="bg-light p-3 rounded-3 mb-3 border">
+                        <div class="fw-bold text-dark fs-6 mb-1" id="quickModalProdName">상품명</div>
+                        <div class="text-secondary small d-flex gap-2">
+                            <span>색상: <strong class="text-dark" id="quickModalColor">-</strong></span>
+                            <span>|</span>
+                            <span>사이즈: <strong class="text-dark" id="quickModalSize">-</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="quickModalStockInput" class="form-label small fw-semibold text-secondary">
+                            수정할 재고 수량 (개)
+                        </label>
+                        <div class="input-group input-group-lg">
+                            <button class="btn btn-outline-secondary" type="button" onclick="adjustQuickStockInput(-1)">
+                                <i class="bi bi-dash-lg"></i>
+                            </button>
+                            <input type="number" class="form-control text-center fw-black fs-3 text-dark" id="quickModalStockInput" min="0" step="1">
+                            <button class="btn btn-outline-secondary" type="button" onclick="adjustQuickStockInput(1)">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
+                        <div class="form-text extra-small text-muted mt-1">
+                            <i class="bi bi-info-circle me-1"></i>0개 설정 시 쇼핑몰에서 즉시 품절 처리됩니다.
+                        </div>
+                    </div>
+
+                    <!-- 빠른 수량 버튼 -->
+                    <div class="d-flex flex-wrap gap-1 mb-2">
+                        <button type="button" class="btn btn-outline-danger btn-sm rounded-pill" onclick="setQuickStockValue(0)">품절 (0개)</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" onclick="adjustQuickStockInput(5)">+5개</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" onclick="adjustQuickStockInput(10)">+10개</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" onclick="adjustQuickStockInput(50)">+50개</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm rounded-pill" onclick="setQuickStockValue(100)">100개 세팅</button>
+                    </div>
+                    <input type="hidden" id="quickModalOptionId" value="">
+                </div>
+                <div class="modal-footer border-top py-2 px-4 bg-light">
+                    <button type="button" class="btn btn-outline-secondary btn-sm rounded-3 px-3" data-bs-dismiss="modal">취소</button>
+                    <button type="button" class="btn btn-warning btn-sm rounded-3 px-4 fw-bold text-dark shadow-sm" id="btnSubmitQuickStock" onclick="submitQuickStockUpdate()">
+                        <i class="bi bi-check2 me-1"></i>재고 저장
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 전체 상품 옵션 재고 관리 모달 -->
+    <div class="modal fade" id="stockManageModal" tabindex="-1" aria-labelledby="stockManageModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content rounded-4 border-0 shadow-lg">
+                <div class="modal-header border-bottom py-3 px-4 bg-light">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="bg-warning p-2 rounded-3 text-dark d-flex align-items-center justify-content-center shadow-sm">
+                            <i class="bi bi-boxes fs-5"></i>
+                        </div>
+                        <div>
+                            <h5 class="modal-title fw-bold text-dark mb-0" id="stockManageModalLabel">
+                                상품 옵션별 재고 관리
+                            </h5>
+                            <div class="extra-small text-muted">모든 상품 및 옵션의 재고를 실시간으로 확인하고 수정할 수 있습니다.</div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <!-- 필터 탭 & 실시간 검색 -->
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 pb-3 border-bottom">
+                        <div class="btn-group btn-group-sm" role="group" id="stockFilterGroup">
+                            <button type="button" class="btn btn-dark active" id="tab-stock-all" onclick="filterStockModalTab('all')">
+                                전체 옵션 (<span id="count-stock-all">{{ all_stock_items|length }}</span>)
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" id="tab-stock-out" onclick="filterStockModalTab('out_of_stock')">
+                                품절 (0개) (<span id="count-stock-out">{{ kpi.out_of_stock_products }}</span>)
+                            </button>
+                            <button type="button" class="btn btn-outline-warning text-dark" id="tab-stock-low" onclick="filterStockModalTab('low_stock')">
+                                품절임박 (1~10개) (<span id="count-stock-low">{{ kpi.low_stock_products }}</span>)
+                            </button>
+                            <button type="button" class="btn btn-outline-success" id="tab-stock-sufficient" onclick="filterStockModalTab('sufficient')">
+                                재고 여유 (11개+)
+                            </button>
+                        </div>
+
+                        <div class="input-group input-group-sm" style="max-width: 320px;">
+                            <span class="input-group-text bg-light text-secondary"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control" id="stockModalSearch" placeholder="상품명/색상/사이즈 검색..." oninput="filterStockModalList()">
+                            <button class="btn btn-outline-secondary" type="button" onclick="document.getElementById('stockModalSearch').value=''; filterStockModalList();" title="검색어 지우기">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 옵션 재고 테이블 -->
+                    <div class="table-responsive" style="max-height: 500px;">
+                        <table class="table table-hover table-custom align-middle mb-0" id="stockModalTable">
+                            <thead class="sticky-top bg-light shadow-sm">
+                                <tr>
+                                    <th class="ps-3">상품명</th>
+                                    <th class="text-center">색상</th>
+                                    <th class="text-center">사이즈</th>
+                                    <th class="text-center">상태</th>
+                                    <th class="text-center" style="width: 220px;">재고 수량</th>
+                                    <th class="text-end pe-3" style="width: 120px;">동작</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in all_stock_items %}
+                                <tr class="stock-item-row" 
+                                    data-name="{{ item.product_name | lower }}" 
+                                    data-color="{{ item.color | lower }}" 
+                                    data-size="{{ item.size | lower }}" 
+                                    data-stock="{{ item.stock }}"
+                                    data-option-id="{{ item.option_id }}">
+                                    <td class="ps-3 fw-bold text-dark">
+                                        {{ item.product_name }}
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge bg-light text-dark border">{{ item.color }}</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge bg-light text-dark border">{{ item.size }}</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge bg-{{ item.badge_class }} px-2 py-1" id="modal-badge-{{ item.option_id }}">
+                                            {{ item.status_text }}
+                                        </span>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="input-group input-group-sm justify-content-center" style="max-width: 170px; margin: 0 auto;">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="stepModalStock('{{ item.option_id }}', -1)">-</button>
+                                            <input type="number" class="form-control text-center fw-bold px-1" id="modal-input-{{ item.option_id }}" value="{{ item.stock }}" min="0" step="1">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="stepModalStock('{{ item.option_id }}', 1)">+</button>
+                                        </div>
+                                    </td>
+                                    <td class="text-end pe-3">
+                                        <button type="button" class="btn btn-dark btn-sm rounded-3 px-3 shadow-sm btn-save-stock" id="modal-save-btn-{{ item.option_id }}" onclick="saveModalOptionStock('{{ item.option_id }}')">
+                                            <i class="bi bi-check-lg me-1"></i>저장
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-4 text-muted">등록된 상품 옵션이 없습니다.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer border-top py-2 px-4 bg-light d-flex justify-content-between align-items-center">
+                    <span class="text-muted extra-small">
+                        <i class="bi bi-info-circle me-1"></i>재고를 0으로 설정하면 쇼핑몰에서 즉시 품절로 처리됩니다.
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-sm rounded-3 px-4" data-bs-dismiss="modal" onclick="window.location.reload();">
+                        닫기 및 새로고침
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 전체 사용자(회원) 관리 모달 -->
+    <div class="modal fade" id="userManageModal" tabindex="-1" aria-labelledby="userManageModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content rounded-4 border-0 shadow-lg">
+                <div class="modal-header border-bottom py-3 px-4 bg-light">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="bg-primary p-2 rounded-3 text-white d-flex align-items-center justify-content-center shadow-sm">
+                            <i class="bi bi-people-fill fs-5"></i>
+                        </div>
+                        <div>
+                            <h5 class="modal-title fw-bold text-dark mb-0" id="userManageModalLabel">
+                                사용자(회원) 통합 관리
+                            </h5>
+                            <div class="extra-small text-muted">가입 회원의 역할(Admin/Customer), 회원 등급, 적립금 및 프로필을 관리합니다.</div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <!-- 검색 및 통계 바 -->
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 pb-3 border-bottom">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-dark px-3 py-2 rounded-pill fs-6">총 회원: <strong id="modal-user-count">{{ users_list|length }}</strong>명</span>
+                            <span class="badge bg-warning text-dark px-3 py-2 rounded-pill small">관리자: <strong>{{ users_list | selectattr('role', 'equalto', 'admin') | list | length }}</strong>명</span>
+                            <span class="badge bg-secondary px-3 py-2 rounded-pill small">일반회원: <strong>{{ users_list | selectattr('role', 'equalto', 'customer') | list | length }}</strong>명</span>
+                        </div>
+
+                        <div class="input-group input-group-sm" style="max-width: 320px;">
+                            <span class="input-group-text bg-light text-secondary"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control" id="userModalSearch" placeholder="회원명/이메일 검색..." oninput="filterUserModalList()">
+                            <button class="btn btn-outline-secondary" type="button" onclick="document.getElementById('userModalSearch').value=''; filterUserModalList();" title="검색어 지우기">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 회원 목록 테이블 -->
+                    <div class="table-responsive" style="max-height: 480px;">
+                        <table class="table table-hover table-custom align-middle mb-0" id="userModalTable">
+                            <thead class="sticky-top bg-light shadow-sm">
+                                <tr>
+                                    <th class="ps-3">회원명</th>
+                                    <th>이메일</th>
+                                    <th>연락처</th>
+                                    <th class="text-center">권한(Role)</th>
+                                    <th class="text-center">회원 등급</th>
+                                    <th class="text-end">적립 포인트</th>
+                                    <th class="text-end">총 결제금액</th>
+                                    <th class="text-center">주문수</th>
+                                    <th class="text-center">가입일시</th>
+                                    <th class="text-end pe-3" style="width: 100px;">관리</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for u in users_list %}
+                                <tr class="user-modal-row" data-name="{{ u.name | lower }}" data-email="{{ u.email | lower }}" data-id="{{ u.id }}">
+                                    <td class="ps-3 fw-bold text-dark">
+                                        <i class="bi bi-person-fill text-secondary me-1"></i>{{ u.name }}
+                                    </td>
+                                    <td class="text-muted extra-small">{{ u.email }}</td>
+                                    <td class="text-muted extra-small">{{ u.phone }}</td>
+                                    <td class="text-center">
+                                        <span class="badge bg-{{ u.role_badge_class }} px-2 py-1 user-role-badge-{{ u.id }}">
+                                            {{ u.role | upper }}
+                                        </span>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge bg-{{ u.grade_badge_class }} px-2 py-1 user-grade-badge-{{ u.id }}">
+                                            {{ u.grade }}
+                                        </span>
+                                    </td>
+                                    <td class="text-end fw-bold text-primary user-points-text-{{ u.id }}">
+                                        {{ u.points_formatted }}
+                                    </td>
+                                    <td class="text-end fw-bold text-dark small">
+                                        {{ u.total_spent_formatted }}
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge bg-light text-dark border">{{ u.order_count }}건</span>
+                                    </td>
+                                    <td class="text-muted extra-small text-center">{{ u.created_at }}</td>
+                                    <td class="text-end pe-3">
+                                        <button type="button" class="btn btn-outline-dark btn-sm rounded-pill px-3 shadow-sm"
+                                                onclick="openUserEditModal('{{ u.id }}', '{{ u.name }}', '{{ u.email }}', '{{ u.phone }}', '{{ u.role }}', '{{ u.grade }}', {{ u.points }})">
+                                            <i class="bi bi-sliders me-1"></i>설정
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="10" class="text-center py-4 text-muted">가입된 회원이 없습니다.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer border-top py-2 px-4 bg-light d-flex justify-content-between align-items-center">
+                    <span class="text-muted extra-small">
+                        <i class="bi bi-shield-check me-1 text-success"></i>권한을 'ADMIN'으로 지정 시 관리자 페이지에 접근할 수 있습니다.
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-sm rounded-3 px-4" data-bs-dismiss="modal">
+                        닫기
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. 단일 사용자 정보 수정 모달 (User Edit Modal) -->
+    <div class="modal fade" id="userEditModal" tabindex="-1" aria-labelledby="userEditModalLabel" aria-hidden="true" style="z-index: 1085;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content rounded-4 border-0 shadow-lg">
+                <div class="modal-header border-bottom py-3 px-4 bg-light">
+                    <h5 class="modal-title fw-bold text-dark d-flex align-items-center gap-2" id="userEditModalLabel">
+                        <i class="bi bi-person-gear text-primary"></i>회원 정보 및 권한 설정
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="bg-light p-3 rounded-3 mb-3 border">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <strong class="text-dark fs-6" id="editModalUserName">회원명</strong>
+                            <span class="badge bg-dark" id="editModalUserEmail">email@domain.com</span>
+                        </div>
+                        <div class="text-muted extra-small" id="editModalUserId">ID: -</div>
+                    </div>
+
+                    <div class="row g-3">
+                        <!-- 권한 설정 (Role) -->
+                        <div class="col-md-6">
+                            <label for="editModalRoleSelect" class="form-label small fw-semibold text-secondary">
+                                회원 역할 / 권한 (Role) <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select rounded-3" id="editModalRoleSelect">
+                                <option value="customer">CUSTOMER (일반 고객)</option>
+                                <option value="admin">ADMIN (시스템 관리자)</option>
+                                <option value="seller">SELLER (판매자)</option>
+                            </select>
+                            <div class="form-text extra-small text-muted">ADMIN 선택 시 /admin/* 전용 접근 권한 부여</div>
+                        </div>
+
+                        <!-- 회원 등급 설정 (Grade) -->
+                        <div class="col-md-6">
+                            <label for="editModalGradeSelect" class="form-label small fw-semibold text-secondary">
+                                회원 등급 (Grade) <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select rounded-3" id="editModalGradeSelect">
+                                <option value="BRONZE">BRONZE (기본)</option>
+                                <option value="SILVER">SILVER</option>
+                                <option value="GOLD">GOLD</option>
+                                <option value="VIP">VIP</option>
+                            </select>
+                        </div>
+
+                        <!-- 보유 포인트 (Points) -->
+                        <div class="col-12">
+                            <label for="editModalPointsInput" class="form-label small fw-semibold text-secondary">
+                                적립 포인트 (P)
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light text-secondary"><i class="bi bi-coin"></i></span>
+                                <input type="number" class="form-control" id="editModalPointsInput" min="0" step="100">
+                                <button class="btn btn-outline-secondary" type="button" onclick="adjustEditPoints(1000)">+1,000P</button>
+                                <button class="btn btn-outline-secondary" type="button" onclick="adjustEditPoints(5000)">+5,000P</button>
+                            </div>
+                        </div>
+
+                        <!-- 이름 수정 -->
+                        <div class="col-md-6">
+                            <label for="editModalNameInput" class="form-label small fw-semibold text-secondary">이름</label>
+                            <input type="text" class="form-control rounded-3" id="editModalNameInput" placeholder="회원 이름">
+                        </div>
+
+                        <!-- 연락처 수정 -->
+                        <div class="col-md-6">
+                            <label for="editModalPhoneInput" class="form-label small fw-semibold text-secondary">연락처</label>
+                            <input type="text" class="form-control rounded-3" id="editModalPhoneInput" placeholder="010-0000-0000">
+                        </div>
+                    </div>
+
+                    <input type="hidden" id="editModalTargetUserId" value="">
+                </div>
+                <div class="modal-footer border-top py-2 px-4 bg-light">
+                    <button type="button" class="btn btn-outline-secondary btn-sm rounded-3 px-3" data-bs-dismiss="modal">취소</button>
+                    <button type="button" class="btn btn-primary btn-sm rounded-3 px-4 fw-bold shadow-sm" id="btnSubmitUserEdit" onclick="submitUserEdit()">
+                        <i class="bi bi-check2 me-1"></i>설정 저장
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 재고 수정 JavaScript 스크립트 -->
+    <script>
+        // 토스트 표시 함수
+        function showStockToast(message, isSuccess = true) {
+            const toastEl = document.getElementById('stockToast');
+            const msgEl = document.getElementById('stockToastMessage');
+            const iconEl = document.getElementById('stockToastIcon');
+
+            if (msgEl) msgEl.innerText = message;
+            if (iconEl) {
+                if (isSuccess) {
+                    iconEl.className = "bi bi-check-circle-fill text-success fs-5";
+                } else {
+                    iconEl.className = "bi bi-exclamation-triangle-fill text-danger fs-5";
+                }
+            }
+            if (toastEl) {
+                const toast = new bootstrap.Toast(toastEl, { delay: 3500 });
+                toast.show();
+            }
+        }
+
+        // 1. 빠른 재고 수정 모달 열기
+        let quickModalInstance = null;
+        function openQuickStockModal(optionId, prodName, color, size, currentStock) {
+            document.getElementById('quickModalOptionId').value = optionId;
+            document.getElementById('quickModalProdName').innerText = prodName;
+            document.getElementById('quickModalColor').innerText = color || '기본';
+            document.getElementById('quickModalSize').innerText = size || '기본';
+            document.getElementById('quickModalStockInput').value = currentStock;
+
+            const modalEl = document.getElementById('quickStockModal');
+            quickModalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+            quickModalInstance.show();
+        }
+
+        function adjustQuickStockInput(delta) {
+            const input = document.getElementById('quickModalStockInput');
+            let val = parseInt(input.value || 0, 10) + delta;
+            if (val < 0) val = 0;
+            input.value = val;
+        }
+
+        function setQuickStockValue(val) {
+            const input = document.getElementById('quickModalStockInput');
+            input.value = val;
+        }
+
+        // 빠른 재고 수정 모달 제출 (AJAX POST /admin/stock/update)
+        async function submitQuickStockUpdate() {
+            const optionId = document.getElementById('quickModalOptionId').value;
+            const stockInput = document.getElementById('quickModalStockInput');
+            const stockVal = parseInt(stockInput.value, 10);
+            const btn = document.getElementById('btnSubmitQuickStock');
+
+            if (isNaN(stockVal) || stockVal < 0) {
+                alert("재고 수량은 0 이상의 정수로 입력해주세요.");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>저장 중...';
+
+            try {
+                const res = await fetch('/admin/stock/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ option_id: optionId, stock: stockVal })
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    showStockToast(result.message, true);
+
+                    // 대시보드 테이블 내 해당 옵션의 배지들 실시간 갱신
+                    updateBadgesOnPage(optionId, result.new_stock, result.badge_class, result.status_text);
+
+                    if (quickModalInstance) {
+                        quickModalInstance.hide();
+                    }
+                } else {
+                    showStockToast(result.error || "수정 실패", false);
+                }
+            } catch (err) {
+                console.error("재고 수정 통신 오류:", err);
+                showStockToast("서버 통신 중 오류가 발생했습니다.", false);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check2 me-1"></i>재고 저장';
+            }
+        }
+
+        // 2. 전체 재고 모달 내 필터 및 증감
+        let currentStockTabFilter = 'all';
+
+        function openStockModalWithFilter(filterType) {
+            filterStockModalTab(filterType);
+            const modalEl = document.getElementById('stockManageModal');
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+
+        function filterStockModalTab(tabType) {
+            currentStockTabFilter = tabType;
+            const group = document.getElementById('stockFilterGroup');
+            group.querySelectorAll('button').forEach(btn => {
+                btn.classList.remove('active', 'btn-dark', 'btn-danger', 'btn-warning', 'btn-success');
+                btn.classList.add('btn-outline-secondary');
+            });
+
+            if (tabType === 'all') {
+                const b = document.getElementById('tab-stock-all');
+                b.className = 'btn btn-dark active';
+            } else if (tabType === 'out_of_stock') {
+                const b = document.getElementById('tab-stock-out');
+                b.className = 'btn btn-danger active';
+            } else if (tabType === 'low_stock') {
+                const b = document.getElementById('tab-stock-low');
+                b.className = 'btn btn-warning text-dark active';
+            } else if (tabType === 'sufficient') {
+                const b = document.getElementById('tab-stock-sufficient');
+                b.className = 'btn btn-success active';
+            }
+
+            filterStockModalList();
+        }
+
+        function filterStockModalList() {
+            const query = (document.getElementById('stockModalSearch').value || '').trim().toLowerCase();
+            const rows = document.querySelectorAll('#stockModalTable tbody .stock-item-row');
+
+            rows.forEach(row => {
+                const name = row.getAttribute('data-name') || '';
+                const color = row.getAttribute('data-color') || '';
+                const size = row.getAttribute('data-size') || '';
+                const stock = parseInt(row.getAttribute('data-stock') || '0', 10);
+
+                const matchesQuery = !query || name.includes(query) || color.includes(query) || size.includes(query);
+
+                let matchesTab = true;
+                if (currentStockTabFilter === 'out_of_stock') {
+                    matchesTab = (stock === 0);
+                } else if (currentStockTabFilter === 'low_stock') {
+                    matchesTab = (stock >= 1 && stock <= 10);
+                } else if (currentStockTabFilter === 'sufficient') {
+                    matchesTab = (stock >= 11);
+                }
+
+                if (matchesQuery && matchesTab) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        function stepModalStock(optionId, delta) {
+            const input = document.getElementById(`modal-input-${optionId}`);
+            if (input) {
+                let v = parseInt(input.value || 0, 10) + delta;
+                if (v < 0) v = 0;
+                input.value = v;
+            }
+        }
+
+        // 전체 모달 내 각 옵션별 저장
+        async function saveModalOptionStock(optionId) {
+            const input = document.getElementById(`modal-input-${optionId}`);
+            const btn = document.getElementById(`modal-save-btn-${optionId}`);
+            const stockVal = parseInt(input.value, 10);
+
+            if (isNaN(stockVal) || stockVal < 0) {
+                alert("재고 수량은 0 이상의 정수로 입력해주세요.");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+            try {
+                const res = await fetch('/admin/stock/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ option_id: optionId, stock: stockVal })
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    showStockToast(result.message, true);
+
+                    // 모달 내 행 속성 및 배지 업데이트
+                    const row = document.querySelector(`.stock-item-row[data-option-id="${optionId}"]`);
+                    if (row) {
+                        row.setAttribute('data-stock', result.new_stock);
+                    }
+                    const badge = document.getElementById(`modal-badge-${optionId}`);
+                    if (badge) {
+                        badge.className = `badge bg-${result.badge_class} px-2 py-1`;
+                        badge.innerText = result.status_text;
+                    }
+
+                    // 버튼 성공 애니메이션 피드백
+                    btn.className = "btn btn-success btn-sm rounded-3 px-3 shadow-sm";
+                    btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>완료';
+                    setTimeout(() => {
+                        btn.className = "btn btn-dark btn-sm rounded-3 px-3 shadow-sm";
+                        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>저장';
+                        btn.disabled = false;
+                    }, 1500);
+
+                    // 대시보드 테이블 내 배지도 함께 실시간 갱신
+                    updateBadgesOnPage(optionId, result.new_stock, result.badge_class, result.status_text);
+                } else {
+                    showStockToast(result.error || "수정 실패", false);
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>저장';
+                }
+            } catch (err) {
+                console.error("모달 재고 저장 오류:", err);
+                showStockToast("서버 통신 중 오류가 발생했습니다.", false);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>저장';
+            }
+        }
+
+        // 페이지 내 모든 관련 배지 텍스트/스타일 실시간 갱신 헬퍼
+        function updateBadgesOnPage(optionId, newStock, badgeClass, statusText) {
+            const badges = document.querySelectorAll(`.stock-badge-opt-${optionId}`);
+            badges.forEach(b => {
+                b.className = `badge bg-${badgeClass} px-2 py-1 stock-badge-opt-${optionId}`;
+                if (b.innerText.includes('(')) {
+                    b.innerText = `${newStock}개 (${statusText})`;
+                } else {
+                    b.innerText = `${newStock}개`;
+                }
+            });
+        }
+
+        // =========================================================================
+        // 3. 사용자(회원) 관리 관련 스크립트
+        // =========================================================================
+
+        let userEditModalInstance = null;
+
+        function openUserEditModal(userId, name, email, phone, role, grade, points) {
+            document.getElementById('editModalTargetUserId').value = userId;
+            document.getElementById('editModalUserName').innerText = name || '회원';
+            document.getElementById('editModalUserEmail').innerText = email || '-';
+            document.getElementById('editModalUserId').innerText = `회원 ID: ${userId}`;
+            
+            document.getElementById('editModalRoleSelect').value = role || 'customer';
+            document.getElementById('editModalGradeSelect').value = grade || 'BRONZE';
+            document.getElementById('editModalPointsInput').value = points || 0;
+            document.getElementById('editModalNameInput').value = name || '';
+            document.getElementById('editModalPhoneInput').value = (phone && phone !== '-') ? phone : '';
+
+            const modalEl = document.getElementById('userEditModal');
+            userEditModalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+            userEditModalInstance.show();
+        }
+
+        function adjustEditPoints(delta) {
+            const input = document.getElementById('editModalPointsInput');
+            let v = parseInt(input.value || 0, 10) + delta;
+            if (v < 0) v = 0;
+            input.value = v;
+        }
+
+        // 사용자 정보 수정 제출 (AJAX POST /admin/users/update)
+        async function submitUserEdit() {
+            const userId = document.getElementById('editModalTargetUserId').value;
+            const role = document.getElementById('editModalRoleSelect').value;
+            const grade = document.getElementById('editModalGradeSelect').value;
+            const points = parseInt(document.getElementById('editModalPointsInput').value, 10);
+            const name = document.getElementById('editModalNameInput').value.trim();
+            const phone = document.getElementById('editModalPhoneInput').value.trim();
+            const btn = document.getElementById('btnSubmitUserEdit');
+
+            if (isNaN(points) || points < 0) {
+                alert("포인트는 0 이상의 정수로 입력해주세요.");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>저장 중...';
+
+            try {
+                const res = await fetch('/admin/users/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        role: role,
+                        grade: grade,
+                        points: points,
+                        full_name: name,
+                        phone: phone
+                    })
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    showStockToast(result.message, true);
+
+                    // 대시보드 및 모달 테이블 내 배지/포인트 실시간 반영
+                    updateUserDOM(userId, role, grade, points, name, phone);
+
+                    if (userEditModalInstance) {
+                        userEditModalInstance.hide();
+                    }
+                } else {
+                    showStockToast(result.error || "수정 실패", false);
+                }
+            } catch (err) {
+                console.error("사용자 수정 오류:", err);
+                showStockToast("서버 통신 중 오류가 발생했습니다.", false);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check2 me-1"></i>설정 저장';
+            }
+        }
+
+        function updateUserDOM(userId, role, grade, points, name, phone) {
+            const roleBadges = document.querySelectorAll(`.user-role-badge-${userId}`);
+            const roleClass = role === 'admin' ? 'bg-warning text-dark' : (role === 'seller' ? 'bg-info text-dark' : 'bg-light text-dark border');
+            roleBadges.forEach(b => {
+                b.className = `badge ${roleClass} px-2 py-1 user-role-badge-${userId}`;
+                b.innerText = role.toUpperCase();
+            });
+
+            const gradeBadges = document.querySelectorAll(`.user-grade-badge-${userId}`);
+            const gradeMap = { VIP: 'bg-danger', GOLD: 'bg-warning text-dark', SILVER: 'bg-secondary', BRONZE: 'bg-dark' };
+            const gradeClass = gradeMap[grade] || 'bg-secondary';
+            gradeBadges.forEach(b => {
+                b.className = `badge ${gradeClass} px-2 py-1 user-grade-badge-${userId}`;
+                b.innerText = grade;
+            });
+
+            const pointsTexts = document.querySelectorAll(`.user-points-text-${userId}`);
+            pointsTexts.forEach(p => {
+                p.innerText = `${points.toLocaleString()}P`;
+            });
+        }
+
+        // 인라인 사용자 테이블 실시간 검색
+        function filterUserInlineTable() {
+            const query = (document.getElementById('userInlineSearch').value || '').trim().toLowerCase();
+            const rows = document.querySelectorAll('#userInlineTable tbody .user-inline-row');
+            rows.forEach(r => {
+                const name = r.getAttribute('data-name') || '';
+                const email = r.getAttribute('data-email') || '';
+                if (!query || name.includes(query) || email.includes(query)) {
+                    r.style.display = '';
+                } else {
+                    r.style.display = 'none';
+                }
+            });
+        }
+
+        // 모달 내 사용자 목록 실시간 검색
+        function filterUserModalList() {
+            const query = (document.getElementById('userModalSearch').value || '').trim().toLowerCase();
+            const rows = document.querySelectorAll('#userModalTable tbody .user-modal-row');
+            rows.forEach(r => {
+                const name = r.getAttribute('data-name') || '';
+                const email = r.getAttribute('data-email') || '';
+                if (!query || name.includes(query) || email.includes(query)) {
+                    r.style.display = '';
+                } else {
+                    r.style.display = 'none';
+                }
+            });
+        }
+    </script>
+</body>
+</html>

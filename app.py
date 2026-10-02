@@ -42,7 +42,31 @@ def create_app(test_config=None):
     # routes/main.py에 정의된 main_bp와 app/routes/auth.py에 정의된 auth_bp를 가져와서 앱에 연결합니다.
     from routes.main import main_bp
     from app.routes.auth import auth_bp
+    from routes.admin_routes import admin_bp
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(admin_bp)
+
+    # 403 Forbidden 에러 핸들러 (비관리자 접근 시 403 페이지 표시)
+    from flask import render_template
+
+    @app.errorhandler(403)
+    def forbidden_error(error):
+        return render_template("403.html", brand_name="VIBE-FASHION"), 403
+
+    # 컨텍스트 프로세서: 모든 템플릿에서 is_admin 변수 사용 가능하도록 등록
+    from routes.admin_auth import is_admin_user
+    from flask import session
+
+    @app.context_processor
+    def inject_admin_status():
+        user_id = session.get("user_id")
+        is_admin = False
+        if user_id:
+            if session.get("role") == "admin":
+                is_admin = True
+            else:
+                is_admin = is_admin_user(user_id)
+        return dict(is_admin=is_admin)
 
     return app

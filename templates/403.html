@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>403 Forbidden - 접근 권한 없음 | {{ brand_name or 'VIBE-FASHION' }}</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        .error-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 1.25rem;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+            max-width: 520px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-5 text-center">
+        <div class="row justify-content-center">
+            <div class="col-12 col-md-9 col-lg-7">
+                <div class="error-card p-4 p-md-5">
+                    <div class="mb-4">
+                        <div class="d-inline-flex align-items-center justify-content-center bg-danger bg-opacity-10 text-danger rounded-circle p-4 mb-3">
+                            <i class="bi bi-shield-slash-fill display-3"></i>
+                        </div>
+                        <h1 class="display-5 fw-black text-danger mb-2">403</h1>
+                        <h3 class="fw-bold text-white mb-2">접근 권한이 없습니다</h3>
+                        <p class="text-secondary small mb-4">
+                            이 페이지는 시스템 관리자(<code>role='admin'</code>) 전용 구역입니다.<br>
+                            현재 로그인하신 계정은 관리자 권한이 없으므로 접근이 차단되었습니다.
+                        </p>
+                    </div>
+
+                    <div class="d-flex flex-column flex-sm-row gap-2 justify-content-center">
+                        <a href="{{ url_for('main.index') }}" class="btn btn-warning fw-bold text-dark px-4 py-2 rounded-3 shadow-sm">
+                            <i class="bi bi-house-door-fill me-1"></i>쇼핑몰 메인으로
+                        </a>
+                        <a href="{{ url_for('admin.admin_login') }}" class="btn btn-outline-light fw-semibold px-4 py-2 rounded-3">
+                            <i class="bi bi-person-badge me-1"></i>관리자 계정으로 로그인
+                        </a>
+                    </div>
+                </div>
+
+                <div class="text-center mt-3 text-secondary extra-small">
+                    &copy; 2026 {{ brand_name or 'VIBE-FASHION' }}. Security Access Control.
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
