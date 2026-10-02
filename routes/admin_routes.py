@@ -49,14 +49,25 @@ def admin_login():
     """
     [GET/POST /admin/login]
     - 관리자 전용 로그인 화면 및 인증 처리
+    - 웹사이트에 로그인되지 않은 상태(비로그인) 접근 시 관리자 로그인 화면 노출 차단 (403 Forbidden)
+    - 일반 회원(role != 'admin') 접근 시 403 Forbidden 차단
     - profiles 테이블의 role='admin'인 사용자만 로그인 가능
     - 로그인 성공 시 /admin/dashboard 로 이동
-    - 비관리자 접근 시 403 페이지 표시
     """
-    # 이미 관리자로 로그인되어 있으면 대시보드로 이동
-    if session.get("user_id") and session.get("role") == "admin":
+    user_id = session.get("user_id")
+
+    # 1. 웹사이트에 로그인하지 않은 상태로 접근 시 관리자 로그인 화면 노출 차단 (403 Forbidden)
+    if not user_id:
+        abort(403, description="login_required_for_admin")
+
+    # 2. 이미 관리자로 권한 인증 완료된 상태이면 바로 대시보드로 이동
+    if session.get("role") == "admin":
         session["_admin_login_redirect"] = True
         return redirect(url_for("admin.admin_dashboard"))
+
+    # 3. 로그인되어 있으나 관리자 권한(role='admin')이 없는 일반 회원이면 403 Forbidden 차단
+    if not is_admin_user(user_id):
+        abort(403, description="not_admin_role")
 
     error_msg = None
 

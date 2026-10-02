@@ -112,7 +112,7 @@ def is_direct_address_bar_access(req) -> bool:
 def admin_required(f):
     """
     관리자 전용 접근 제어 데코레이터
-    - 로그인하지 않은 경우: /admin/login 이동
+    - 로그인하지 않은 경우: 403 Forbidden (login_required_for_admin) 표시하여 관리자 화면 노출 차단
     - 로그인했지만 admin 권한이 없는 경우(role != 'admin'): 403 Forbidden 페이지 표시
     - 브라우저 주소창 직접 입력으로 접근 시: 403 Forbidden (direct_url_blocked) 표시
     """
@@ -120,10 +120,9 @@ def admin_required(f):
     def decorated_function(*args, **kwargs):
         user_id = session.get("user_id")
 
-        # 1. 미로그인 상태 -> /admin/login 으로 리다이렉트
+        # 1. 미로그인 상태 -> 관리자 로그인 화면을 노출하지 않고 403 Forbidden 차단
         if not user_id:
-            flash("관리자 로그인이 필요한 페이지입니다.", "warning")
-            return redirect(url_for("admin.admin_login", next=request.path))
+            abort(403, description="login_required_for_admin")
 
         # 2. 로그인되어 있으나 관리자 권한(role='admin')이 없는 경우 -> 403 Forbidden
         if not is_admin_user(user_id):
