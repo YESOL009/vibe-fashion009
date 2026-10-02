@@ -467,7 +467,7 @@
                             <th class="text-end">상품가격</th>
                             <th class="text-end">주문금액</th>
                             <th class="text-center">현재 재고</th>
-                            <th class="text-center pe-4">주문상태</th>
+                            <th class="text-center pe-4" title="클릭하여 배송/주문 상태를 변경할 수 있습니다">배송/주문상태 <i class="bi bi-chevron-down small text-muted"></i></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -514,9 +514,62 @@
                                 {% endif %}
                             </td>
                             <td class="text-center pe-4">
-                                <span class="badge bg-{{ row.status_badge_class }} px-2 py-1">
-                                    {{ row.status_label }}
-                                </span>
+                                <div class="dropdown d-inline-block">
+                                    <button class="btn btn-sm badge bg-{{ row.status_badge_class }} dropdown-toggle border-0 py-2 px-2 shadow-sm order-status-badge-{{ row.order_number }}" 
+                                            type="button" 
+                                            data-bs-toggle="dropdown" 
+                                            aria-expanded="false" 
+                                            id="statusDropdown-{{ row.order_number }}"
+                                            title="클릭하여 배송/주문 상태 변경">
+                                        <span class="status-text-{{ row.order_number }}">{{ row.status_label }}</span>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end shadow-sm extra-small py-2 border-0" style="min-width: 155px; z-index: 1050;">
+                                        <li><h6 class="dropdown-header extra-small text-muted border-bottom pb-1 mb-1"><i class="bi bi-truck me-1"></i>배송/주문상태 변경</h6></li>
+                                        <li>
+                                            <button class="dropdown-item py-1 px-3 d-flex align-items-center justify-content-between" type="button" onclick="changeOrderStatus('{{ row.order_number }}', 'PAID')">
+                                                <span>결제완료</span>
+                                                <span class="badge bg-success">PAID</span>
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item py-1 px-3 d-flex align-items-center justify-content-between" type="button" onclick="changeOrderStatus('{{ row.order_number }}', 'PREPARING')">
+                                                <span>배송준비</span>
+                                                <span class="badge bg-info text-dark">PREPARING</span>
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item py-1 px-3 d-flex align-items-center justify-content-between" type="button" onclick="changeOrderStatus('{{ row.order_number }}', 'SHIPPED')">
+                                                <span>배송중</span>
+                                                <span class="badge bg-primary">SHIPPED</span>
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item py-1 px-3 d-flex align-items-center justify-content-between" type="button" onclick="changeOrderStatus('{{ row.order_number }}', 'DELIVERED')">
+                                                <span>배송완료</span>
+                                                <span class="badge bg-secondary">DELIVERED</span>
+                                            </button>
+                                        </li>
+                                        <li><hr class="dropdown-divider my-1"></li>
+                                        <li>
+                                            <button class="dropdown-item py-1 px-3 d-flex align-items-center justify-content-between text-warning" type="button" onclick="changeOrderStatus('{{ row.order_number }}', 'PENDING')">
+                                                <span class="text-dark">결제대기</span>
+                                                <span class="badge bg-warning text-dark">PENDING</span>
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item py-1 px-3 d-flex align-items-center justify-content-between text-danger" type="button" onclick="changeOrderStatus('{{ row.order_number }}', 'CANCELLED')">
+                                                <span>주문취소</span>
+                                                <span class="badge bg-danger">CANCELLED</span>
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item py-1 px-3 d-flex align-items-center justify-content-between text-secondary" type="button" onclick="changeOrderStatus('{{ row.order_number }}', 'REFUNDED')">
+                                                <span>환불완료</span>
+                                                <span class="badge bg-dark">REFUNDED</span>
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </div>
                             </td>
                         </tr>
                         {% else %}
@@ -1454,6 +1507,51 @@
                     r.style.display = 'none';
                 }
             });
+        }
+
+        // =========================================================================
+        // 4. 주문 배송/상태 변경 함수 (changeOrderStatus)
+        // =========================================================================
+
+        async function changeOrderStatus(orderNumber, newStatus) {
+            const btn = document.getElementById(`statusDropdown-${orderNumber}`);
+            const originalHtml = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+            }
+
+            try {
+                const res = await fetch('/admin/orders/status/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        order_number: orderNumber,
+                        status: newStatus
+                    })
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    showStockToast(result.message, true);
+
+                    // 해당 주문의 모든 뱃지 실시간 스타일/텍스트 업데이트
+                    const badges = document.querySelectorAll(`.order-status-badge-${orderNumber}`);
+                    badges.forEach(b => {
+                        b.className = `btn btn-sm badge bg-${result.badge_class} dropdown-toggle border-0 py-2 px-2 shadow-sm order-status-badge-${orderNumber}`;
+                        b.innerHTML = `<span class="status-text-${orderNumber}">${result.status_label}</span>`;
+                    });
+                } else {
+                    showStockToast(result.error || "상태 변경 실패", false);
+                    if (btn) btn.innerHTML = originalHtml;
+                }
+            } catch (err) {
+                console.error("배송상태 변경 통신 오류:", err);
+                showStockToast("서버 통신 중 오류가 발생했습니다.", false);
+                if (btn) btn.innerHTML = originalHtml;
+            } finally {
+                if (btn) btn.disabled = false;
+            }
         }
     </script>
 </body>

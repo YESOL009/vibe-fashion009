@@ -443,6 +443,7 @@ def admin_dashboard():
                 continue
 
         table_rows.append({
+            "order_id": str(order.get("id")),
             "order_number": order.get("order_number") or str(order.get("id"))[:8],
             "order_date": dt_kst_str,
             "order_date_day": dt_kst_day,
@@ -1016,5 +1017,110 @@ def update_user_profile():
             return jsonify({"success": False, "error": err}), 500
         flash(err, "danger")
         return redirect(request.referrer or url_for("admin.admin_dashboard"))
+
+
+# -----------------------------------------------------------------------------
+# 7. 주문 및 배송 상태 변경 API (/admin/orders/status/update)
+# -----------------------------------------------------------------------------
+
+@admin_bp.route("/orders/status/update", methods=["POST"])
+@admin_bp.route("/api/orders/status/update", methods=["POST"])
+@admin_required
+def update_order_status():
+    """
+    [POST /admin/orders/status/update, POST /admin/api/orders/status/update]
+    - 관리자가 주문의 배송 및 결제 상태 변경 (결제완료, 배송준비, 배송중, 배송완료, 주문취소, 환불완료)
+    - JSON 및 Form 요청 모두 지원
+    - orders 테이블 status 업데이트
+    """
+    data = request.get_json(silent=True) or request.form.to_dict()
+    order_identifier = str(data.get("order_id") or data.get("order_number") or "").strip()
+    new_status = str(data.get("status") or "").strip().upper()
+
+    status_map = {
+        "PENDING": ("결제대기", "warning text-dark"),
+        "PAID": ("결제완료", "success"),
+        "PREPARING": ("배송준비", "info text-dark"),
+        "SHIPPED": ("배송중", "primary"),
+        "DELIVERED": ("배송완료", "secondary"),
+        "CANCELLED": ("주문취소", "danger"),
+        "REFUNDED": ("환불완료", "dark"),
+    }
+
+    if not order_identifier:
+        err = "주문 번호가 전달되지 않았습니다."
+        return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+
+    if new_status not in status_map:
+        err = f"유효하지 않은 주문 상태입니다. ({', '.join(status_map.keys())})"
+        return (jsonify({"success": False, "error": err}), 400) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+
+    admin_client = get_admin_supabase_client() or get_anon_supabase_client()
+    if not admin_client:
+        err = "데이터베이스 연결에 실패했습니다."
+        return (jsonify({"success": False, "error": err}), 500) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+
+    try:
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        update_payload = {
+            "status": new_status,
+            "updated_at": now_iso
+        }
+        if new_status == "PAID":
+            update_payload["paid_at"] = now_iso
+
+        # UUID인지 주문번호(VF-xxx 등)인지 판단하여 쿼리
+        query = admin_client.table("orders").update(update_payload)
+        import uuid
+        is_uuid = False
+        try:
+            uuid.UUID(order_identifier)
+            is_uuid = True
+        except (ValueError, TypeError):
+            is_uuid = False
+
+        if is_uuid:
+            query = query.eq("id", order_identifier)
+        else:
+            query = query.eq("order_number", order_identifier)
+
+        res = query.execute()
+
+        if not res or not res.data:
+            # id로 실패 시 order_number로 재시도
+            res = admin_client.table("orders").update(update_payload).eq("order_number", order_identifier).execute()
+
+        if not res or not res.data:
+            err = f"주문({order_identifier})을 찾을 수 없거나 상태 업데이트에 실패했습니다."
+            return (jsonify({"success": False, "error": err}), 404) if request.is_json else (flash(err, "danger"), redirect(request.referrer or url_for("admin.admin_dashboard")))[1]
+
+        updated_order = res.data[0]
+        status_label, badge_class = status_map[new_status]
+        order_num = updated_order.get("order_number") or order_identifier
+
+        msg = f"주문 [{order_num}] 상태가 '{status_label}'(으)로 변경되었습니다."
+
+        if request.is_json:
+            return jsonify({
+                "success": True,
+                "message": msg,
+                "order_number": order_num,
+                "order_id": str(updated_order.get("id")),
+                "status": new_status,
+                "status_label": status_label,
+                "badge_class": badge_class
+            })
+
+        flash(msg, "success")
+        return redirect(request.referrer or url_for("admin.admin_dashboard"))
+
+    except Exception as e:
+        print(f"[주문 상태 변경 오류] {e}", file=sys.stderr)
+        err = f"주문 상태 변경 중 오류가 발생했습니다: {str(e)}"
+        if request.is_json:
+            return jsonify({"success": False, "error": err}), 500
+        flash(err, "danger")
+        return redirect(request.referrer or url_for("admin.admin_dashboard"))
+
 
 
